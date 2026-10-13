@@ -11,6 +11,7 @@ KITS = {
     "survival": "kenney_survival-kit/Models/GLB format",
     "grave": "kenney_graveyard-kit_5.0/Models/GLB format",
     "chars": "kenney_mini-characters/Models/GLB format",
+    "nature": "kenney_nature-kit/Models/GLTF format",
 }
 
 WARM = (1.0, 0.72, 0.32)
@@ -167,10 +168,23 @@ GEN = {"lantern": lantern, "beacon": beacon, "ballista": ballista, "brazier": br
 BUILDINGS = {f"{name}_t{t}": fn(t) for name, fn in GEN.items() for t in (1, 2, 3)}
 BUILDINGS["builderHut_t1"] = {"size": 2, "fill": 0.9, "parts": house(1, 1, 1, roof="roof-point") + [P("survival", "workbench-anvil", (0.95, -0.2), scale=0.7)]}
 
+# Декор вокруг карты: деревья, скалы, кусты (рендерятся как постройки 1-2 клетки).
+DECOR = {
+    "oak": ("tree_oak", 2, 1.0), "oak_dark": ("tree_oak_dark", 2, 1.0), "fat": ("tree_fat", 2, 1.0),
+    "detailed": ("tree_detailed", 2, 1.0), "pine": ("tree_pineTallA_detailed", 2, 0.9), "pine2": ("tree_pineRoundC", 2, 0.9),
+    "cone": ("tree_cone_dark", 2, 0.8), "tall": ("tree_tall_dark", 2, 0.9),
+    "rock_large": ("rock_largeA", 2, 1.0), "rock_tall": ("rock_tallB", 1, 1.0), "rock_small": ("rock_smallC", 1, 0.9),
+    "bush": ("plant_bushLarge", 1, 1.0), "bush2": ("plant_bushDetailed", 1, 0.9), "stump": ("stump_oldTall", 1, 0.8),
+    "mushrooms": ("mushroom_redGroup", 1, 0.7), "flowers": ("flower_yellowA", 1, 0.6), "logs": ("log_stack", 1, 1.0),
+}
+for _k, (_m, _s, _f) in DECOR.items():
+    BUILDINGS[f"decor_{_k}"] = {"size": _s, "fill": _f, "parts": [P("nature", _m)]}
+
 WALK = [0.0, 0.25, 0.5, 0.75]
 HIT = [0.25, 0.55]
 
 UNITS = {
+    "worker": {"kit": "chars", "model": "character-male-b", "height": 0.9, "anims": {"walk": WALK, "interact-right": [0.0, 0.33, 0.66]}},
     "torch": {"kit": "chars", "model": "character-male-a", "height": 0.95, "anims": {"walk": WALK, "attack-melee-right": HIT}},
     "archer": {"kit": "chars", "model": "character-female-a", "height": 0.9, "anims": {"walk": WALK, "holding-right-shoot": HIT}},
     "shield": {"kit": "chars", "model": "character-male-c", "height": 1.15, "anims": {"walk": WALK, "attack-melee-left": HIT}},
