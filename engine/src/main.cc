@@ -24,7 +24,7 @@ int frameNo = 0;
 struct Opts {
     const char* shot = nullptr;
     int frames = 60;
-    std::string scene = "village", modal;
+    std::string scene = "village", modal, select;
     bool deploy = false, keepDialogue = false;
     int w = 1280, h = 720;
 } opt;
@@ -41,6 +41,7 @@ void init() {
     if (opt.scene == "mission") app.startMission(0);
     else if (opt.scene == "raid") app.startRaid();
     else if (opt.scene == "night") app.startNight();
+    if (!opt.select.empty()) app.selectType(opt.select);
     using M = client::Modal;
     if (opt.modal == "shop") app.modal = M::Shop;
     else if (opt.modal == "army") app.modal = M::Army;
@@ -48,6 +49,7 @@ void init() {
     else if (opt.modal == "night") app.modal = M::Night;
     else if (opt.modal == "codex") app.modal = M::Codex;
     else if (opt.modal == "menu") app.modal = M::Menu;
+    else if (opt.modal == "info") app.modal = M::Info;
 }
 
 void frame() {
@@ -85,6 +87,7 @@ sapp_desc sokol_main(int argc, char* argv[]) {
         else if (a == "--scene") opt.scene = next();
         else if (a == "--modal") opt.modal = next();
         else if (a == "--deploy") opt.deploy = true;
+        else if (a == "--select") opt.select = next();
         else if (a == "--dialogue") opt.keepDialogue = true;
         else if (a == "--size") { std::string s = next(); opt.w = std::atoi(s.c_str()); opt.h = std::atoi(s.substr(s.find('x') + 1).c_str()); }
     }

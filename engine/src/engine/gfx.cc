@@ -85,6 +85,8 @@ struct State {
     Texture* whiteTex = nullptr;
     Blend blend = Blend::Alpha;
     float w = 1, h = 1;
+    struct Xf { float cx, cy, s, a; };
+    std::vector<Xf> xf;
 } S;
 
 sg_pipeline makePipeline(Blend b) {
@@ -260,14 +262,25 @@ void beginFrame(float width, float height) {
     S.verts.clear();
     S.cmds.clear();
     S.blend = Blend::Alpha;
+    S.xf.clear();
 }
 float width() { return S.w; }
 float height() { return S.h; }
 
 void setBlend(Blend b) { S.blend = b; }
 
-void quad(const Texture* t, const Vtx v[4]) {
+void pushScale(float cx, float cy, float s, float a) { S.xf.push_back({cx, cy, s, a}); }
+void popScale() { if (!S.xf.empty()) S.xf.pop_back(); }
+
+void quad(const Texture* t, const Vtx vin[4]) {
     if (!t || S.verts.size() / 4 >= (size_t)kMaxQuads) return;
+    Vtx v[4] = {vin[0], vin[1], vin[2], vin[3]};
+    for (auto it = S.xf.rbegin(); it != S.xf.rend(); ++it)
+        for (auto& p : v) {
+            p.x = it->cx + (p.x - it->cx) * it->s;
+            p.y = it->cy + (p.y - it->cy) * it->s;
+            if (it->a < 1.f) p.color = withAlpha(p.color, it->a);
+        }
     if (S.cmds.empty() || S.cmds.back().tex != t || S.cmds.back().blend != S.blend) {
         S.cmds.push_back({t, S.blend, (int)(S.verts.size() / 4), 0});
     }

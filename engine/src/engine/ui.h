@@ -14,7 +14,7 @@ struct Rect {
     bool contains(float px, float py) const { return px >= x && py >= y && px < x + w && py < y + h; }
 };
 
-enum class Style { Normal, Gold, Green, Red, Dark };
+enum class Style { Normal, Gold, Green, Red, Dark, Paper, Card };
 
 // Принимает события кадра, возвращает те, что достались миру.
 std::vector<input::Event> beginFrame(const std::vector<input::Event>& events);
@@ -29,6 +29,12 @@ bool iconButton(const Rect& r, const std::string& icon, const std::string& label
 void label(const std::string& text, float x, float y, float size, uint32_t color, int align = 0);
 void bar(const Rect& r, float frac, uint32_t color);
 void icon(const std::string& name, float cx, float cy, float size, uint32_t color = 0xffffffffu);
+// Круглая кнопка действия (как под выбранным зданием в CoC): иконка внутри, подпись снизу.
+bool roundButton(float cx, float cy, float r, const std::string& icon, const std::string& label, Style s = Style::Normal, bool enabled = true);
+// Лента-заголовок.
+void ribbon(const std::string& text, float cx, float y, float w);
+// Время для анимаций (секунды).
+void setTime(float t);
 // Прямоугольник, по которому было касание-клик (без отрисовки).
 bool tapped(const Rect& r);
 

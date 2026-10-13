@@ -182,3 +182,28 @@ UNITS = {
     "leech": {"kit": "grave", "model": "character-skeleton", "height": 0.95, "anims": {"sprint": WALK, "attack-melee-left": HIT}},
     "wraith": {"kit": "grave", "model": "character-ghost", "height": 1.25, "anims": {"fall": WALK, "holding-both-shoot": HIT}},
 }
+
+
+ORE = (0.95, 0.42, 0.1)
+GOLD = (1.0, 0.68, 0.1)
+CYAN = (0.15, 0.72, 1.0)
+
+
+def T(kit, model, at=(0, 0), z=0, rot=0, scale=1.0, tint=None, emit=0.0):
+    d = P(kit, model, at, z, rot, scale)
+    if tint:
+        d["tint"] = tint
+        d["emit"] = emit
+    return d
+
+
+ICONS = {
+    "ore": {"parts": [T("survival", "resource-stone-large", tint=ORE, scale=1.0), T("survival", "resource-stone", (0.18, -0.2), tint=ORE, scale=0.7)]},
+    "aether": {"parts": [T("td", "detail-crystal-large", tint=CYAN, emit=0.15)]},
+    "shard": {"parts": [T("td", "detail-crystal", tint=GOLD, emit=0.1)], "yaw": 10},
+    "builder": {"parts": [P("survival", "tool-hammer-upgraded", rot=0)], "yaw": 60},
+    "army": {"parts": [P("survival", "tool-axe-upgraded")], "yaw": 60},
+    "codex": {"parts": [P("survival", "chest")]},
+    "map": {"parts": [P("castle", "flag-wide")], "yaw": 50},
+    "lantern": {"parts": [T("grave", "lantern-glass", tint=GOLD, emit=0.05)]},
+}

@@ -13,7 +13,7 @@
 namespace client {
 
 enum class Scene { Village, Battle };
-enum class Modal { None, Shop, Army, Map, Night, Codex, Menu, Result };
+enum class Modal { None, Shop, Army, Map, Night, Codex, Menu, Result, Info };
 enum class BattleKind { Raid, Mission, Night };
 
 struct Toast { std::string text; float t; uint32_t color; };
@@ -63,6 +63,9 @@ public:
     void startNight();
     void skipDialogue() { dlg.clear(); }
     void autoDeploy();
+    void selectType(const std::string& id) {
+        for (auto& b : S.buildings) if (std::string(lf::B(b.type).id) == id) { selected = b.id; return; }
+    }
     Scene scene = Scene::Village;
     Modal modal = Modal::None;
 
@@ -79,6 +82,17 @@ private:
     void toast(const std::string& s, uint32_t color = 0xffffffffu);
     void drawToasts(float dt);
     long long now() const;
+
+    // анимации интерфейса
+    Modal shownModal = Modal::None;
+    float modalT = 0;
+    struct Flyer { lf::Res res; Vec2 from, to; float t, delay; long long amount; };
+    std::vector<Flyer> flyers;
+    double shownOre = -1, shownAether = -1, shownShards = -1;
+    Vec2 resAnchor[3]{};
+    void spawnFlyers(lf::Res r, Vec2 from, long long amount);
+    void drawFlyers(float dt);
+    void drawInfo();
 
     // диалоги
     std::vector<lf::Line> dlg;

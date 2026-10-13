@@ -74,6 +74,30 @@ void App::drawToasts(float dt) {
     toasts.erase(std::remove_if(toasts.begin(), toasts.end(), [](const Toast& t) { return t.t <= 0; }), toasts.end());
 }
 
+void App::spawnFlyers(lf::Res r, Vec2 from, long long amount) {
+    int n = (int)std::clamp(amount / 40 + 3, 3LL, 10LL);
+    for (int i = 0; i < n; i++) {
+        float a = i * 2.4f;
+        Vec2 f{from.x + std::cos(a) * 14, from.y + std::sin(a) * 8};
+        flyers.push_back({r, f, resAnchor[(int)r], 0, i * 0.05f, i == n - 1 ? amount : 0});
+    }
+}
+
+void App::drawFlyers(float dt) {
+    for (auto& f : flyers) {
+        f.delay -= dt;
+        if (f.delay > 0) continue;
+        f.t += dt / 0.55f;
+        float k = std::min(1.f, f.t);
+        float e = k * k * (3 - 2 * k);
+        float x = f.from.x + (f.to.x - f.from.x) * e;
+        float y = f.from.y + (f.to.y - f.from.y) * e - std::sin(k * 3.14159f) * 60;
+        const char* ic = f.res == lf::Res::Ore ? "icon/ore" : f.res == lf::Res::Aether ? "icon/aether" : "icon/shard";
+        ui::icon(ic, x, y, 30 * (1.f - 0.3f * k));
+    }
+    flyers.erase(std::remove_if(flyers.begin(), flyers.end(), [](const Flyer& f) { return f.t >= 1; }), flyers.end());
+}
+
 void App::dialogue(const std::vector<lf::Line>& lines, std::function<void()> done) {
     dlg = lines;
     dlgIdx = 0;
@@ -141,8 +165,11 @@ void App::frame(float dt, float width, float height) {
     auto world = ui::beginFrame(events);
     if (!dlg.empty() || modal != Modal::None) world.clear();
     gfx::beginFrame(width, height);
+    ui::setTime(t);
+    if (modal != shownModal) { if (modal != Modal::None) modalT = t; shownModal = modal; }
     if (scene == Scene::Village) villageFrame(dt, world);
     else battleFrame(dt, world);
+    drawFlyers(dt);
     drawDialogue();
     drawToasts(dt);
     ui::endFrame();

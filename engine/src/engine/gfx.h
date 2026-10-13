@@ -40,6 +40,9 @@ void beginFrame(float width, float height);
 float width();
 float height();
 void setBlend(Blend b);
+// Масштаб вокруг точки для всего, что рисуется до pop (анимации UI). Вкладывается.
+void pushScale(float cx, float cy, float s, float alpha = 1.f);
+void popScale();
 void quad(const Texture* t, const Vtx v[4]);
 void rect(const Texture* t, float x, float y, float w, float h, float u0, float v0, float u1, float v1, uint32_t color);
 void fillRect(float x, float y, float w, float h, uint32_t color);

@@ -52,6 +52,25 @@ for udir in sorted(glob.glob(os.path.join(SRC, "units", "*"))):
     for png in sorted(glob.glob(os.path.join(udir, "*.png"))):
         add(f"u/{unit}/{os.path.basename(png)[:-4]}", Image.open(png), *meta["pivot"])
 
+# ---------- 3D-иконки с обводкой (переопределяют плоские ниже) ----------
+def outlined(img, width=7, color=(28, 16, 36)):
+    img = img.convert("RGBA")
+    pad = width + 2
+    big = Image.new("RGBA", (img.width + pad * 2, img.height + pad * 2), (0, 0, 0, 0))
+    big.paste(img, (pad, pad))
+    a = big.getchannel("A").point(lambda v: 255 if v > 40 else 0)
+    ring = a.filter(ImageFilter.MaxFilter(width * 2 + 1)).filter(ImageFilter.GaussianBlur(0.8))
+    out = Image.new("RGBA", big.size, color + (0,))
+    out.putalpha(ring)
+    out.alpha_composite(big)
+    return out
+
+
+ICON3D = {}
+for png in sorted(glob.glob(os.path.join(SRC, "icons", "*.png"))):
+    name = os.path.basename(png)[:-4]
+    ICON3D[name] = outlined(Image.open(png))
+
 # ---------- земля ----------
 rnd = random.Random(7)
 TW, TH = 128, 64
@@ -144,11 +163,93 @@ def rounded_box(w, h, r, top, bottom, border, border_w=3, inner=None, gloss=True
 
 add("ui/panel", rounded_box(96, 96, 20, (58, 44, 92), (34, 25, 58), (20, 12, 34), 4, (120, 100, 170), gloss=False), trim=False)
 add("ui/panel_dark", rounded_box(96, 96, 20, (26, 20, 44), (16, 12, 30), (8, 5, 16), 4, (70, 60, 110), gloss=False), trim=False)
-add("ui/btn", rounded_box(96, 96, 22, (112, 96, 176), (64, 50, 120), (24, 14, 44), 4, (170, 156, 230)), trim=False)
-add("ui/btn_gold", rounded_box(96, 96, 22, (255, 210, 90), (214, 132, 30), (70, 36, 10), 4, (255, 240, 170)), trim=False)
-add("ui/btn_green", rounded_box(96, 96, 22, (140, 220, 90), (60, 150, 50), (18, 50, 16), 4, (200, 255, 170)), trim=False)
-add("ui/btn_red", rounded_box(96, 96, 22, (240, 110, 100), (170, 46, 46), (60, 12, 12), 4, (255, 180, 170)), trim=False)
-add("ui/btn_dark", rounded_box(96, 96, 22, (70, 60, 100), (40, 32, 64), (14, 8, 26), 4, (110, 100, 150)), trim=False)
+def chunky_button(top, bottom, lip, w=112, h=112, r=26):
+    """Кнопка в стиле мобильных стратегий: толстая обводка, «бортик» снизу, глянцевый блик."""
+    def fn(d, s, im):
+        O = 5 * s
+        # тень-бортик (толщина кнопки)
+        d.rounded_rectangle((0, 8 * s, w * s - 1, h * s - 1), r * s, fill=(20, 12, 28, 255))
+        d.rounded_rectangle((O, 8 * s + O - 2 * s, w * s - 1 - O, h * s - 1 - O + 2 * s), (r - 4) * s, fill=lip + (255,))
+        # лицевая часть с градиентом
+        face = Image.new("RGBA", (w * s, h * s), (0, 0, 0, 0))
+        g = Image.new("RGBA", (w * s, h * s))
+        gd = ImageDraw.Draw(g)
+        for y in range(h * s):
+            t = y / (h * s - 1)
+            gd.line((0, y, w * s, y), fill=tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3)) + (255,))
+        m = Image.new("L", (w * s, h * s), 0)
+        ImageDraw.Draw(m).rounded_rectangle((O, O, w * s - 1 - O, h * s - 1 - 12 * s), (r - 4) * s, fill=255)
+        face.paste(g, (0, 0), m)
+        ImageDraw.Draw(face).rounded_rectangle((0, 0, w * s - 1, h * s - 1 - 8 * s), r * s, outline=(20, 12, 28, 255), width=O)
+        im.alpha_composite(face)
+        # блик
+        gl = Image.new("RGBA", (w * s, h * s), (0, 0, 0, 0))
+        ImageDraw.Draw(gl).rounded_rectangle((O + 6 * s, O + 4 * s, w * s - O - 6 * s, int(h * s * 0.38)), (r - 8) * s, fill=(255, 255, 255, 70))
+        im.alpha_composite(gl)
+    return smooth(fn, w, h)
+
+
+add("ui/btn", chunky_button((128, 112, 200), (82, 66, 150), (52, 38, 100)), trim=False)
+add("ui/btn_gold", chunky_button((255, 222, 96), (240, 150, 30), (170, 90, 20)), trim=False)
+add("ui/btn_green", chunky_button((168, 236, 96), (82, 176, 56), (40, 110, 34)), trim=False)
+add("ui/btn_red", chunky_button((250, 120, 100), (206, 60, 50), (130, 30, 30)), trim=False)
+add("ui/btn_dark", chunky_button((92, 82, 124), (58, 50, 86), (34, 28, 54)), trim=False)
+
+
+def round_button(top, bottom, lip, size=128):
+    def fn(d, s, im):
+        S = size * s
+        d.ellipse((0, 8 * s, S - 1, S - 1), fill=(20, 12, 28, 255))
+        d.ellipse((5 * s, 10 * s, S - 5 * s, S - 6 * s), fill=lip + (255,))
+        g = Image.new("RGBA", (S, S))
+        gd = ImageDraw.Draw(g)
+        for y in range(S):
+            t = y / (S - 1)
+            gd.line((0, y, S, y), fill=tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3)) + (255,))
+        m = Image.new("L", (S, S), 0)
+        ImageDraw.Draw(m).ellipse((5 * s, 5 * s, S - 5 * s, S - 14 * s), fill=255)
+        im.paste(g, (0, 0), m)
+        d.ellipse((0, 0, S - 1, S - 9 * s), outline=(20, 12, 28, 255), width=5 * s)
+        gl = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+        ImageDraw.Draw(gl).ellipse((16 * s, 9 * s, S - 16 * s, int(S * 0.42)), fill=(255, 255, 255, 70))
+        im.alpha_composite(gl)
+    return smooth(fn, size, size)
+
+
+add("ui/round", round_button((128, 112, 200), (82, 66, 150), (52, 38, 100)), trim=False)
+add("ui/round_gold", round_button((255, 222, 96), (240, 150, 30), (170, 90, 20)), trim=False)
+add("ui/round_green", round_button((168, 236, 96), (82, 176, 56), (40, 110, 34)), trim=False)
+
+
+def paper_panel(w=128, h=128, r=26):
+    """Пергаментное окно: тёплая бумага, двойная рамка, лёгкая текстура."""
+    rr = random.Random(5)
+    def fn(d, s, im):
+        d.rounded_rectangle((0, 0, w * s - 1, h * s - 1), r * s, fill=(36, 22, 30, 255))
+        d.rounded_rectangle((5 * s, 5 * s, w * s - 1 - 5 * s, h * s - 1 - 5 * s), (r - 4) * s, fill=(146, 98, 58, 255))
+        inner = (11 * s, 11 * s, w * s - 1 - 11 * s, h * s - 1 - 11 * s)
+        d.rounded_rectangle(inner, (r - 9) * s, fill=(248, 232, 196, 255))
+        tex = Image.new("RGBA", (w * s, h * s), (0, 0, 0, 0))
+        td = ImageDraw.Draw(tex)
+        for _ in range(500):
+            x, y = rr.uniform(inner[0], inner[2]), rr.uniform(inner[1], inner[3])
+            c = rr.choice([(210, 180, 130, 40), (255, 250, 230, 50)])
+            rad = rr.uniform(2, 7) * s
+            td.ellipse((x - rad, y - rad, x + rad, y + rad), fill=c)
+        m = Image.new("L", (w * s, h * s), 0)
+        ImageDraw.Draw(m).rounded_rectangle(inner, (r - 9) * s, fill=255)
+        tex = tex.filter(ImageFilter.GaussianBlur(3 * s))
+        clipped = Image.new("RGBA", (w * s, h * s), (0, 0, 0, 0))
+        clipped.paste(tex, (0, 0), m)
+        im.alpha_composite(clipped)
+        d.rounded_rectangle((8 * s, 8 * s, w * s - 1 - 8 * s, h * s - 1 - 8 * s), (r - 6) * s, outline=(196, 148, 90, 255), width=2 * s)
+    return smooth(fn, w, h)
+
+
+add("ui/paper", paper_panel(), trim=False)
+add("ui/card", rounded_box(96, 96, 18, (255, 246, 222), (232, 214, 176), (120, 84, 50), 3, (255, 255, 240), gloss=False), trim=False)
+add("ui/card_dark", rounded_box(96, 96, 18, (190, 176, 150), (160, 146, 120), (90, 66, 44), 3, gloss=False), trim=False)
+add("ui/ribbon", rounded_box(128, 48, 14, (120, 70, 180), (80, 40, 130), (24, 12, 40), 4, (190, 150, 240)), trim=False)
 add("ui/bar_bg", rounded_box(48, 24, 12, (20, 14, 30), (34, 26, 50), (10, 6, 16), 2, gloss=False), trim=False)
 add("ui/bar_fill", rounded_box(48, 20, 10, (255, 255, 255), (200, 200, 200), (255, 255, 255), 1), trim=False)
 frame = smooth(lambda d, s, im: d.rounded_rectangle((6 * s, 6 * s, 90 * s, 90 * s), 22 * s, outline=(255, 255, 255, 255), width=5 * s), 96, 96)
@@ -156,7 +257,13 @@ add("ui/glow_frame", frame.filter(ImageFilter.GaussianBlur(3)), trim=False)
 
 
 def icon(name, fn, size=128):
+    if name in ICON3D:
+        return
     add("icon/" + name, smooth(fn, size, size), trim=False)
+
+
+for _n, _img in ICON3D.items():
+    add("icon/" + _n, _img)
 
 
 def outlined_poly(d, pts, fill, s, outline=(30, 18, 40), w=7):
