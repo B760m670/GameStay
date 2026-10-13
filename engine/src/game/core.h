@@ -145,6 +145,7 @@ struct VillageState {
     Stats stats;
     bool started = false;
     std::map<std::string, int> tasks;  // id -> сколько ступеней уже забрано
+    int rating = 0;        // рейтинг набегов
     long long xp = 0;      // опыт внутри текущего уровня
     int level = 1;         // уровень игрока
     int levelUps = 0;      // не сохраняется: сколько повышений клиент ещё не показал
@@ -211,6 +212,11 @@ bool nightDue(const VillageState& S, long long now);
 long long xpToNext(int level);
 int addXp(VillageState& S, long long amount);
 int levelReward(int level);
+// Рейтинг и лиги.
+struct League { const char* name; int minRating; float lootBonus; uint32_t color; };
+const League& league(int rating);
+int leagueIndex(int rating);
+int ratingDelta(bool win, int stars);
 const std::vector<TaskDef>& taskDefs();
 long long taskProgress(const VillageState& S, const TaskDef& t);
 int taskClaimed(const VillageState& S, const TaskDef& t);

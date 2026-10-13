@@ -253,6 +253,12 @@ void App::drawResult() {
         font::draw("Похищено Мглой: " + fmtNum(bt.lostOre) + " руды, " + fmtNum(bt.lostAether) + " Эфира", x + w / 2, cy, 15, kBad, font::Center, false);
         cy += 26;
     }
+    if (bt.kind == BattleKind::Raid) {
+        std::string rd = std::string("Рейтинг: ") + (bt.ratingDelta >= 0 ? "+" : "") + std::to_string(bt.ratingDelta) + "  (" +
+                         std::to_string(S.rating) + ", лига " + lf::village::league(S.rating).name + ")";
+        font::draw(rd, x + w / 2, cy, 15, bt.ratingDelta >= 0 ? kGood : kBad, font::Center, false);
+        cy += 22;
+    }
     std::string got = "Получено: " + fmtNum(bt.gotOre) + " руды, " + fmtNum(bt.gotAether) + " Эфира";
     if (bt.gotShards) got += ", " + std::to_string(bt.gotShards) + " осколков";
     font::draw(got, x + w / 2, cy, 16, kGood, font::Center, false);

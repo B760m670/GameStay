@@ -48,6 +48,7 @@ struct BattleState {
     lf::BattleResult res;
     long long gotOre = 0, gotAether = 0, gotShards = 0, lostOre = 0, lostAether = 0;
     bool firstWin = false;
+    int ratingDelta = 0;
 };
 
 class App {

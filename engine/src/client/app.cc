@@ -256,8 +256,9 @@ void App::finishBattle() {
         lf::village::scheduleNextNight(S, now());
     } else {
         for (auto& [type, n] : r.used) S.army[(int)type] = std::max(0, S.army[(int)type] - n);
-        bt.gotOre = lf::village::addRes(S, lf::Res::Ore, r.lootOre);
-        bt.gotAether = lf::village::addRes(S, lf::Res::Aether, r.lootAether);
+        float bonus = bt.kind == BattleKind::Raid ? 1.f + lf::village::league(S.rating).lootBonus : 1.f;
+        bt.gotOre = lf::village::addRes(S, lf::Res::Ore, (long long)(r.lootOre * bonus));
+        bt.gotAether = lf::village::addRes(S, lf::Res::Aether, (long long)(r.lootAether * bonus));
         S.stats.attacks++;
         if (r.win) S.stats.wins++;
         S.stats.stars += r.stars;
@@ -276,9 +277,15 @@ void App::finishBattle() {
                 S.shards += ms.rewardShards;
                 if (std::find(S.codex.begin(), S.codex.end(), ms.codex) == S.codex.end()) S.codex.push_back(ms.codex);
             }
-        } else if (r.stars > 0) {
-            bt.gotShards = r.stars;
-            S.shards += r.stars;
+        } else {
+            int old = S.rating, before = lf::village::leagueIndex(old);
+            S.rating = std::max(0, old + lf::village::ratingDelta(r.win, r.stars));
+            bt.ratingDelta = S.rating - old;
+            if (r.stars > 0) {
+                bt.gotShards = r.stars;
+                S.shards += r.stars;
+            }
+            if (lf::village::leagueIndex(S.rating) > before) toast(std::string("Новая лига: ") + lf::village::league(S.rating).name + "!", gfx::rgba(255, 216, 107));
         }
     }
     save();

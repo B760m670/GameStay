@@ -631,6 +631,17 @@ void App::drawMap() {
         }
         y += 10;
         font::draw("Армия: " + std::to_string(V::armyHousing(S)) + " мест · Затмений в бою: " + std::to_string(lf::eclipseCharges(LL)), body.x + 6, y, 15, kInkSoft, font::Left, false);
+        y += 30;
+        const auto& lg = V::league(S.rating);
+        int li = V::leagueIndex(S.rating);
+        atlas::draw9(atlas::get("ui/card"), body.x, y, body.w, 56, 24, 12);
+        ui::icon("icon/star", body.x + 30, y + 28, 36, lg.color);
+        font::draw(std::string("Лига ") + lg.name + " · рейтинг " + std::to_string(S.rating), body.x + 60, y + 8, 18, kInk, font::Left, false);
+        int nextMin = 0;
+        for (int r = S.rating; r < 100000 && li < 5; r++) if (V::leagueIndex(r) > li) { nextMin = r; break; }
+        font::draw(li < 5 ? "Бонус к добыче +" + std::to_string((int)(lg.lootBonus * 100)) + "% · до следующей лиги " + std::to_string(nextMin - S.rating)
+                          : "Бонус к добыче +" + std::to_string((int)(lg.lootBonus * 100)) + "% · высшая лига",
+                   body.x + 60, y + 32, 13, kInkSoft, font::Left, false);
         ui::Rect br{body.x + body.w / 2 - 150, body.y + body.h - 70, 300, 56};
         if (ui::button(br, "", ui::Style::Gold)) {
             if (V::armyHousing(S) == 0) toast("Армия пуста — обучи войска", kBad);

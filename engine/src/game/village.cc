@@ -315,6 +315,20 @@ int addXp(VillageState& S, long long amount) {
     return ups;
 }
 
+namespace {
+const League kLeagues[] = {
+    {"Медь", 0, 0.00f, 0xff5a8ad0u}, {"Бронза", 100, 0.05f, 0xff3a7ac8u}, {"Серебро", 300, 0.10f, 0xffd8d0c8u},
+    {"Золото", 600, 0.15f, 0xff40c8ffu}, {"Платина", 1000, 0.20f, 0xffe8e0a0u}, {"Алмаз", 1600, 0.30f, 0xffffe080u},
+};
+}
+int leagueIndex(int rating) {
+    int i = 0;
+    for (int k = 0; k < 6; k++) if (rating >= kLeagues[k].minRating) i = k;
+    return i;
+}
+const League& league(int rating) { return kLeagues[leagueIndex(rating)]; }
+int ratingDelta(bool win, int stars) { return win ? 8 + stars * 6 : -6; }
+
 const std::vector<TaskDef>& taskDefs() {
     static const std::vector<TaskDef> v = {
         {"build", "Строитель", "Построй новых построек: %s", Metric::Built, {5, 20, 60}, {3, 6, 12}, {10, 30, 80}},
@@ -428,6 +442,7 @@ std::string save(const VillageState& S) {
     o << "stats " << S.stats.attacks << " " << S.stats.wins << " " << S.stats.nightsWon << " " << S.stats.nightsLost << "\n";
     o << "started " << (S.started ? 1 : 0) << "\n";
     o << "xp " << S.level << " " << S.xp << "\n";
+    o << "rating " << S.rating << "\n";
     o << "stats2 " << S.stats.built << " " << S.stats.upgrades << " " << S.stats.oreCollected << " " << S.stats.aetherCollected << " "
       << S.stats.beaconsDestroyed << " " << S.stats.stars << " " << S.stats.trained << "\n";
     for (const auto& [id, tier] : S.tasks) o << "task " << id << " " << tier << "\n";
@@ -462,6 +477,7 @@ bool load(const std::string& text, VillageState& out) {
         else if (k == "stats") l >> S.stats.attacks >> S.stats.wins >> S.stats.nightsWon >> S.stats.nightsLost;
         else if (k == "started") { int v; l >> v; S.started = v != 0; }
         else if (k == "xp") l >> S.level >> S.xp;
+        else if (k == "rating") l >> S.rating;
         else if (k == "stats2") l >> S.stats.built >> S.stats.upgrades >> S.stats.oreCollected >> S.stats.aetherCollected >> S.stats.beaconsDestroyed >> S.stats.stars >> S.stats.trained;
         else if (k == "task") { std::string id; int tier; l >> id >> tier; S.tasks[id] = tier; }
         else if (k == "army") for (auto& n : S.army) l >> n;
