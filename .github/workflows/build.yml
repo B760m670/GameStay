@@ -1,0 +1,74 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux — тесты ядра и скриншоты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: sudo apt-get update -q && sudo apt-get install -y -q libgl1-mesa-dev libx11-dev libxi-dev libxcursor-dev libasound2-dev xvfb mesa-utils
+      - name: Build
+        run: cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release && cmake --build engine/build -j
+      - name: Core tests
+        run: engine/build/lf_tests
+      - name: Smoke screenshots
+        working-directory: engine
+        run: |
+          mkdir -p shots save
+          export LANTERNFALL_ASSETS=assets LANTERNFALL_SAVE_DIR=save
+          run() { xvfb-run -a -s "-screen 0 1800x1000x24" ./build/lanternfall --size 844x390 "$@"; }
+          run --screenshot shots/village.png --frames 20
+          run --screenshot shots/shop.png --frames 10 --modal shop
+          rm -rf save && mkdir save && run --screenshot shots/battle.png --frames 900 --scene mission --deploy
+          rm -rf save && mkdir save && run --screenshot shots/night.png --frames 600 --scene night
+          ls -la shots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: engine/shots
+
+  ios:
+    name: iOS — неподписанный IPA для LiveContainer
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build IPA
+        run: engine/ios/build.sh "0.2.${{ github.run_number }}" "${{ github.run_number }}" Lanternfall.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lanternfall-ipa
+          path: Lanternfall.ipa
+      - name: Source for LiveContainer
+        if: github.event_name != 'pull_request'
+        run: |
+          TAG="build-${{ github.run_number }}"
+          python3 distribution/make_source.py Lanternfall.ipa "0.2.${{ github.run_number }}" "${{ github.run_number }}" \
+            "https://github.com/${{ github.repository }}/releases/download/$TAG/Lanternfall.ipa" source.json
+      - uses: softprops/action-gh-release@v2
+        if: github.event_name != 'pull_request'
+        with:
+          tag_name: build-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Lanternfall 0.2.${{ github.run_number }}
+          body: |
+            Автосборка из ${{ github.sha }} (${{ github.ref_name }}).
+            Источник для LiveContainer: https://github.com/${{ github.repository }}/releases/latest/download/source.json
+          files: |
+            Lanternfall.ipa
+            source.json
+            distribution/icon.png
+          make_latest: true
