@@ -6,7 +6,11 @@
 #include "camera.h"
 #include "game/core.h"
 
+namespace atlas { struct Sprite; }
+
 namespace client::world {
+
+const atlas::Sprite* buildingSprite(lf::BType type, int level);
 
 void drawGround(const Camera& cam);
 // Туман: темнота везде, кроме кругов света. Плюс тёплое свечение источников.
@@ -29,7 +33,7 @@ void drawBeam(const Camera& cam, const lf::BBuilding& b, const lf::BTroop& tr);
 void drawEffect(const Camera& cam, const lf::Effect& e, float t);
 
 // Иконка-миниатюра постройки/юнита для UI.
-void drawBuildingThumb(lf::BType type, float cx, float cy, float maxW, float maxH);
+void drawBuildingThumb(lf::BType type, float cx, float cy, float maxW, float maxH, int level = 1);
 void drawTroopThumb(lf::TroopType type, float cx, float cy, float size);
 
 }  // namespace client::world

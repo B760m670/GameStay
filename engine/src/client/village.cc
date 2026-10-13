@@ -304,7 +304,7 @@ void App::drawSelectedPanel() {
     float pw = std::min(560.f, cam.w - 2 * safeX), ph = 120;
     float px = cam.w / 2 - pw / 2, py = cam.h - safeB - 62 - 10 - ph;
     ui::panel({px, py, pw, ph});
-    world::drawBuildingThumb(b->type, px + 52, py + ph / 2, 84, 100);
+    world::drawBuildingThumb(b->type, px + 52, py + ph / 2, 84, 100, std::max(1, b->level));
     float tx = px + 104;
     std::string title = std::string(d.name) + (b->level ? " — ур. " + std::to_string(b->level) : " — строится");
     font::draw(title, tx, py + 10, 20, kGold);

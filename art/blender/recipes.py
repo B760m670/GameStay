@@ -41,81 +41,131 @@ def house(cells_x=2, cells_y=2, storeys=1, front="town", roof="roof-gable"):
     return parts
 
 
-BUILDINGS = {
-    "lantern": {
-        "size": 4, "fill": 0.95,
-        "parts": [
-            P("castle", "tower-square-base", (0.5, 0.5)), P("castle", "tower-square-base", (-0.5, 0.5)),
-            P("castle", "tower-square-base", (0.5, -0.5)), P("castle", "tower-square-base", (-0.5, -0.5)),
-            P("castle", "tower-square-mid-windows", (0, 0), 1.0, 0, 1.55),
-            P("castle", "tower-square-top-roof-high-windows", (0, 0), "top", 0, 1.55),
-            P("grave", "lightpost-single", (1.35, -1.35), 0, 0, 0.9),
-            P("grave", "lightpost-single", (-1.35, -1.35), 0, 0, 0.9),
-            P("grave", "lightpost-single", (1.35, 1.35), 0, 0, 0.9),
-            P("grave", "lightpost-single", (-1.35, 1.35), 0, 0, 0.9),
-            P("castle", "flag-banner-short", (0.62, -1.02), 1.0, -90, 1.0),
-        ],
-        "glow": [{"h": 0.5, "r": 0.1, "x": 0.55, "y": -0.55, "color": WARM, "strength": 25, "light": 200}],
-    },
-    "beacon": {
-        "size": 2, "fill": 0.85,
-        "parts": [P("td", "tower-round-bottom-a"), P("td", "tower-round-middle-a", z="top"), P("td", "tower-round-crystals", z="top")],
-        "glow": [{"h": 0.9, "r": 0.12, "color": AETHER, "strength": 10, "light": 60}],
-    },
-    "ballista": {
-        "size": 3, "fill": 0.86,
-        "parts": [P("castle", "tower-hexagon-base"), P("castle", "tower-hexagon-mid", z="top"),
-                  P("castle", "siege-ballista", z="top", rot=-45, scale=0.75)],
-    },
-    "barracks": {"size": 3, "fill": 0.9, "parts": house(2, 2, 2, roof="roof-gable") + [P("castle", "flag-banner-long", (1.15, -1.15))]},
-    "aetherWell": {
-        "size": 3, "fill": 0.9,
-        "parts": [P("town", "fountain-round"), P("town", "fountain-center", z=0)],
-        "glow": [{"h": 0.35, "r": 0.05, "color": AETHER, "strength": 4, "light": 40}],
-    },
-    "wall": {"size": 1, "fill": 1.0, "parts": [P("castle", "wall-half")]},
-    "oreMine": {
-        "size": 3, "fill": 0.9,
-        "parts": [P("survival", "structure", (0, 0)), P("survival", "resource-stone-large", (0.6, -0.55)),
-                  P("survival", "resource-stone", (-0.55, -0.6)), P("survival", "rock-a", (0.75, 0.55), rot=40),
-                  P("survival", "tool-pickaxe", (0.2, -0.75), rot=30), P("town", "cart", (-0.65, 0.45), rot=200, scale=0.8)],
-    },
-    "oreStore": {
-        "size": 3, "fill": 0.88,
-        "parts": [P("survival", "box-large", (0.35, 0.35)), P("survival", "box-large", (-0.35, 0.35)),
-                  P("survival", "box-large", (0.35, -0.35)), P("survival", "box-large", (-0.35, -0.35)),
-                  P("survival", "box-large", (0, 0), "top"), P("survival", "barrel", (0.8, -0.8)),
-                  P("survival", "resource-stone-large", (-0.75, -0.8), scale=0.8)],
-    },
-    "aetherStore": {
-        "size": 3, "fill": 0.9,
-        "parts": [P("town", "fountain-square-detail"), P("td", "detail-crystal-large", (0, 0), 0.15, 0, 1.6),
-                  P("td", "detail-crystal", (0.4, -0.3), 0.15, 30, 1.2), P("td", "detail-crystal", (-0.35, 0.35), 0.15, 70, 1.1)],
-        "glow": [{"h": 0.45, "r": 0.06, "color": AETHER, "strength": 6, "light": 50}],
-    },
-    "camp": {
-        "size": 3, "fill": 0.92,
-        "parts": [P("survival", "tent", (0.5, 0.45), rot=200), P("survival", "tent-canvas", (-0.55, 0.4), rot=160),
-                  P("survival", "campfire-pit", (0.1, -0.35)), P("survival", "bedroll", (-0.6, -0.55), rot=20),
-                  P("survival", "signpost-single", (0.85, -0.75))],
-        "glow": [{"h": 0.08, "r": 0.04, "x": 0.1, "y": -0.35, "color": WARM, "strength": 15, "light": 30}],
-    },
-    "builderHut": {"size": 2, "fill": 0.9, "parts": house(1, 1, 1, roof="roof-point") + [P("survival", "workbench-anvil", (0.95, -0.2), scale=0.7)]},
-    "brazier": {
-        "size": 2, "fill": 0.8,
-        "parts": [P("grave", "pillar-square", (0, 0), 0, 0, 1.4), P("grave", "fire-basket", (0, 0), "top", 0, 1.6)],
-        "glow": [{"h": 0.92, "r": 0.09, "color": WARM, "strength": 20, "light": 80}],
-    },
-    "catapult": {
-        "size": 3, "fill": 0.88,
-        "parts": [P("survival", "structure-floor", (0, 0), 0, 0, 1.4), P("castle", "siege-catapult", (0, 0), "top", -45, 1.0)],
-    },
-    "prism": {
-        "size": 2, "fill": 0.75,
-        "parts": [P("grave", "pillar-obelisk", (0, 0), 0, 0, 1.0), P("td", "detail-crystal-large", (0, 0), "top", 0, 1.6)],
-        "glow": [{"h": 0.85, "r": 0.08, "color": (1.0, 0.45, 0.9), "strength": 10, "light": 60}],
-    },
-}
+def lantern(t):
+    parts = [P("castle", "tower-square-base", (x, y)) for x in (0.5, -0.5) for y in (0.5, -0.5)]
+    parts.append(P("castle", "tower-square-mid-windows", (0, 0), 1.0, 0, 1.55))
+    if t >= 2:
+        parts.append(P("castle", "tower-square-mid-windows", (0, 0), "top", 0, 1.55))
+    parts.append(P("castle", "tower-square-top-roof-high-windows", (0, 0), "top", 0, 1.55))
+    posts = [(1.35, -1.35), (-1.35, -1.35)] + ([(1.35, 1.35), (-1.35, 1.35)] if t >= 2 else [])
+    parts += [P("grave", "lightpost-double" if t >= 3 else "lightpost-single", p, 0, 0, 0.9) for p in posts]
+    parts.append(P("castle", "flag-banner-short", (0.62, -1.02), 1.0, -90, 1.0))
+    if t >= 3:
+        parts += [P("castle", "tower-top", (x, y), 1.0, 0, 0.55) for x, y in ((0.85, 0.85), (-0.85, -0.85), (0.85, -0.85), (-0.85, 0.85))]
+        parts.append(P("castle", "flag", (0, 0), "top", 0, 1.0))
+    return {"size": 4, "fill": 0.95, "parts": parts,
+            "glow": [{"h": 0.5, "r": 0.1, "x": 0.55, "y": -0.55, "color": WARM, "strength": 25, "light": 200}]}
+
+
+def beacon(t):
+    parts = [P("td", "tower-round-bottom-a")]
+    parts += [P("td", "tower-round-middle-a", z="top") for _ in range(t - 1)]
+    parts.append(P("td", "tower-round-crystals", z="top"))
+    return {"size": 2, "fill": 0.85, "parts": parts, "glow": [{"h": 0.9, "r": 0.12, "color": AETHER, "strength": 10, "light": 60 + 30 * t}]}
+
+
+def ballista(t):
+    if t == 1:
+        parts = [P("survival", "structure-floor", (0, 0), 0, 0, 1.6), P("castle", "siege-ballista", (0, 0), "top", -45, 1.1)]
+    elif t == 2:
+        parts = [P("castle", "tower-square-base"), P("castle", "tower-square-mid", z="top"), P("castle", "siege-ballista", z="top", rot=-45, scale=0.8)]
+    else:
+        parts = [P("castle", "tower-hexagon-base"), P("castle", "tower-hexagon-mid", z="top"), P("castle", "tower-hexagon-mid", z="top"),
+                 P("castle", "siege-ballista", z="top", rot=-45, scale=0.75), P("castle", "flag-pennant", (0.35, 0.35), "top", 0, 0.8)]
+    return {"size": 3, "fill": 0.86, "parts": parts}
+
+
+def brazier(t):
+    base = {1: [P("grave", "pillar-small", (0, 0), 0, 0, 1.4)], 2: [P("grave", "pillar-square", (0, 0), 0, 0, 1.4)],
+            3: [P("castle", "tower-base", (0, 0), 0, 0, 1.0)]}[t]
+    return {"size": 2, "fill": 0.8, "parts": base + [P("grave", "fire-basket", (0, 0), "top", 0, 1.4 + 0.3 * t)],
+            "glow": [{"h": 0.92, "r": 0.09, "color": WARM, "strength": 20, "light": 60 + 25 * t}]}
+
+
+def catapult(t):
+    if t == 1:
+        parts = [P("castle", "siege-catapult", (0, 0), 0, -45, 1.0)]
+    elif t == 2:
+        parts = [P("survival", "structure-floor", (0, 0), 0, 0, 1.4), P("castle", "siege-catapult", (0, 0), "top", -45, 1.0)]
+    else:
+        parts = [P("survival", "structure-floor", (0, 0), 0, 0, 1.6), P("castle", "siege-trebuchet", (0, 0), "top", -45, 1.0),
+                 P("castle", "flag-pennant", (0.8, 0.8), 0, 0, 0.8)]
+    return {"size": 3, "fill": 0.88, "parts": parts}
+
+
+def prism(t):
+    base = {1: [P("grave", "pillar-obelisk")], 2: [P("grave", "pillar-large")],
+            3: [P("td", "tower-round-bottom-c"), P("td", "tower-round-middle-c", z="top")]}[t]
+    return {"size": 2, "fill": 0.75, "parts": base + [P("td", "detail-crystal-large", (0, 0), "top", 0, 1.4 + 0.3 * t)],
+            "glow": [{"h": 0.85, "r": 0.08, "color": (1.0, 0.45, 0.9), "strength": 10, "light": 50 + 20 * t}]}
+
+
+def wall(t):
+    model = {1: ("survival", "fence-fortified"), 2: ("castle", "wall-half"), 3: ("castle", "wall")}[t]
+    return {"size": 1, "fill": 1.0, "parts": [P(model[0], model[1])]}
+
+
+def ore_mine(t):
+    parts = [P("survival", "structure-metal" if t >= 2 else "structure", (0, 0.15), 0, 0, 1.6),
+             P("survival", "resource-stone-large", (0.45, -0.45), 0, 20, 2.2), P("survival", "resource-stone-large", (-0.4, -0.5), 0, 70, 1.9),
+             P("survival", "tool-pickaxe", (0.05, -0.75), 0, 30, 2.0)]
+    if t >= 2:
+        parts.append(P("town", "cart", (-0.85, 0.6), 0, 200, 1.0))
+    if t >= 3:
+        parts += [P("survival", "resource-stone", (0.9, 0.5), 0, 0, 1.4), P("castle", "flag-pennant", (0.5, 0.6), 0, 0, 0.9)]
+    return {"size": 3, "fill": 0.92, "parts": parts}
+
+
+def aether_well(t):
+    parts = [P("town", {1: "fountain-round", 2: "fountain-round-detail", 3: "fountain-square-detail"}[t])]
+    if t >= 2:
+        parts.append(P("td", "detail-crystal", (0, 0), 0.1, 0, 1.2 + 0.3 * t))
+    return {"size": 3, "fill": 0.9, "parts": parts, "glow": [{"h": 0.35, "r": 0.05, "color": AETHER, "strength": 4, "light": 30 + 15 * t}]}
+
+
+def ore_store(t):
+    s = 1.5
+    parts = [P("survival", "box-large", (0.35, 0.35), 0, 0, s), P("survival", "box-large", (-0.35, -0.35), 0, 0, s),
+             P("survival", "barrel", (0.55, -0.55), 0, 0, 1.6)]
+    if t >= 2:
+        parts += [P("survival", "box-large", (0.35, -0.35), 0, 0, s), P("survival", "box-large", (-0.35, 0.35), 0, 0, s)]
+    if t >= 3:
+        parts += [P("survival", "box-large", (0, 0), "top", 0, s), P("survival", "resource-stone-large", (-0.7, 0.75), 0, 0, 1.4)]
+    return {"size": 3, "fill": 0.88, "parts": parts}
+
+
+def aether_store(t):
+    parts = [P("town", "fountain-square-detail"), P("td", "detail-crystal-large", (0, 0), 0.15, 0, 1.4 + 0.3 * t)]
+    if t >= 2:
+        parts.append(P("td", "detail-crystal", (0.4, -0.3), 0.15, 30, 1.3))
+    if t >= 3:
+        parts.append(P("td", "detail-crystal", (-0.35, 0.35), 0.15, 70, 1.3))
+    return {"size": 3, "fill": 0.9, "parts": parts, "glow": [{"h": 0.45, "r": 0.06, "color": AETHER, "strength": 6, "light": 40 + 15 * t}]}
+
+
+def barracks(t):
+    parts = {1: house(1, 2, 1), 2: house(2, 2, 1), 3: house(2, 2, 2)}[t]
+    if t >= 2:
+        parts = parts + [P("castle", "flag-banner-long", (1.15, -1.15))]
+    return {"size": 3, "fill": 0.9, "parts": parts}
+
+
+def camp(t):
+    parts = [P("survival", "tent-canvas", (0.25, 0.3), 0, 200, 2.2), P("survival", "campfire-pit", (-0.35, -0.4), 0, 0, 1.8)]
+    if t >= 2:
+        parts.append(P("survival", "tent-canvas", (-0.45, 0.45), 0, 140, 1.8))
+    if t >= 3:
+        parts += [P("survival", "tent-canvas", (0.5, -0.4), 0, 250, 1.7), P("castle", "flag", (-0.8, -0.8), 0, 0, 0.9)]
+    return {"size": 3, "fill": 0.92, "parts": parts,
+            "glow": [{"h": 0.06, "r": 0.04, "x": -0.35, "y": -0.35, "color": WARM, "strength": 15, "light": 30}]}
+
+
+GEN = {"lantern": lantern, "beacon": beacon, "ballista": ballista, "brazier": brazier, "catapult": catapult, "prism": prism,
+       "wall": wall, "oreMine": ore_mine, "aetherWell": aether_well, "oreStore": ore_store, "aetherStore": aether_store,
+       "barracks": barracks, "camp": camp}
+
+BUILDINGS = {f"{name}_t{t}": fn(t) for name, fn in GEN.items() for t in (1, 2, 3)}
+BUILDINGS["builderHut_t1"] = {"size": 2, "fill": 0.9, "parts": house(1, 1, 1, roof="roof-point") + [P("survival", "workbench-anvil", (0.95, -0.2), scale=0.7)]}
 
 WALK = [0.0, 0.25, 0.5, 0.75]
 HIT = [0.25, 0.55]

@@ -67,6 +67,15 @@ void ellipseSprite(const char* name, float x, float y, float rx, float ry, uint3
 }
 }  // namespace
 
+// Облик постройки по уровню: 3 ступени (t1..t3) на всю шкалу уровней.
+const atlas::Sprite* buildingSprite(lf::BType type, int level) {
+    const auto& def = lf::B(type);
+    int tier = std::clamp((level - 1) * 3 / std::max(1, def.maxLevel) + 1, 1, 3);
+    for (int t = tier; t >= 1; t--)
+        if (const atlas::Sprite* s = atlas::get(std::string("b/") + def.id + "_t" + std::to_string(t))) return s;
+    return atlas::get(std::string("b/") + def.id);
+}
+
 void drawGround(const Camera& cam) {
     const float s = cam.zoom * 0.5f;
     std::string name;
@@ -154,7 +163,7 @@ void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level
         }
         return;
     }
-    const atlas::Sprite* sp = atlas::get(std::string("b/") + def.id);
+    const atlas::Sprite* sp = buildingSprite(type, level);
     float dim = look.dim * (look.constructing ? 0.7f : 1.f);
     uint32_t col = rgba((int)(255 * dim), (int)(255 * dim), (int)(255 * std::min(1.f, dim * 1.08f)), (int)(255 * look.alpha * (look.constructing ? 0.75f : 1)));
     if (sp) {
@@ -298,8 +307,8 @@ void drawEffect(const Camera& cam, const lf::Effect& e, float t) {
     (void)t;
 }
 
-void drawBuildingThumb(lf::BType type, float cx, float cy, float maxW, float maxH) {
-    const atlas::Sprite* sp = atlas::get(std::string("b/") + lf::B(type).id);
+void drawBuildingThumb(lf::BType type, float cx, float cy, float maxW, float maxH, int level) {
+    const atlas::Sprite* sp = buildingSprite(type, level);
     if (!sp) return;
     float k = std::min(maxW / sp->w, maxH / sp->h);
     atlas::drawRect(sp, cx - sp->w * k / 2, cy - sp->h * k / 2, sp->w * k, sp->h * k);
