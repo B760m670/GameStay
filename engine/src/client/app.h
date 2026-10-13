@@ -13,7 +13,7 @@
 namespace client {
 
 enum class Scene { Village, Battle };
-enum class Modal { None, Shop, Army, Map, Night, Codex, Menu, Result, Info, Tasks };
+enum class Modal { None, Shop, Army, Map, Night, Codex, Menu, Result, Info, Tasks, Workshop };
 enum class BattleKind { Raid, Mission, Night };
 
 struct Toast { std::string text; float t; uint32_t color; };
@@ -95,6 +95,7 @@ private:
     void drawFlyers(float dt);
     void drawInfo();
     void drawTasks();
+    void drawWorkshop();
 
     // диалоги
     std::vector<lf::Line> dlg;

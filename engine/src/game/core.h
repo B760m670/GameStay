@@ -20,7 +20,7 @@ constexpr long long kFirstNightMs = 8LL * 60 * 1000;
 constexpr float kEclipseRadius = 3.5f;
 constexpr float kEclipseDuration = 10.f;
 
-enum class BType { Lantern, Beacon, OreMine, AetherWell, OreStore, AetherStore, Barracks, Camp, BuilderHut, Ballista, Brazier, Catapult, Prism, Wall, Count };
+enum class BType { Lantern, Beacon, OreMine, AetherWell, OreStore, AetherStore, Barracks, Camp, BuilderHut, Ballista, Brazier, Catapult, Prism, Wall, Workshop, Count };
 enum class Res { Ore, Aether, Shards, None };
 enum class TroopType { Torch, Archer, Shield, Sapper, Shade, Owl, Morok, Brute, Leech, Wraith, Count };
 enum class Target { Any, Defense, Light, Wall };
@@ -146,6 +146,9 @@ struct VillageState {
     bool started = false;
     std::map<std::string, int> tasks;  // id -> сколько ступеней уже забрано
     int rating = 0;        // рейтинг набегов
+    std::array<int, kPlayerTroops> troopLevel{1, 1, 1, 1, 1, 1};
+    int researchType = -1;  // какой отряд сейчас улучшается в Кузнице
+    long long researchUntil = 0;
     long long xp = 0;      // опыт внутри текущего уровня
     int level = 1;         // уровень игрока
     int levelUps = 0;      // не сохраняется: сколько повышений клиент ещё не показал
@@ -212,6 +215,14 @@ bool nightDue(const VillageState& S, long long now);
 long long xpToNext(int level);
 int addXp(VillageState& S, long long amount);
 int levelReward(int level);
+// Кузница: улучшение отрядов.
+constexpr int kMaxTroopLevel = 5;
+float troopMult(int level);  // множитель здоровья и урона
+int troopMaxLevel(const VillageState& S);
+int researchCost(TroopType t, int toLevel);
+int researchTime(TroopType t, int toLevel);
+Result canResearch(const VillageState& S, TroopType t, long long now);
+Result startResearch(VillageState& S, TroopType t, long long now);
 // Рейтинг и лиги.
 struct League { const char* name; int minRating; float lootBonus; uint32_t color; };
 const League& league(int rating);
@@ -286,6 +297,7 @@ struct BattleOptions {
     BattleMode mode = BattleMode::Attack;
     std::vector<LayoutItem> layout;
     std::map<TroopType, int> army;
+    std::map<TroopType, int> troopLevels;  // уровни отрядов атакующего (1 по умолчанию)
     int eclipseCharges = 0;
     int seed = 1;
     float duration = kBattleTime;
@@ -328,6 +340,7 @@ public:
     BattleResult result;
     std::vector<Wave> waves;
     float hazeMult;
+    std::map<TroopType, int> troopLevels;
 
 private:
     float lastDeployAt = -99.f;

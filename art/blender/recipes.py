@@ -161,7 +161,17 @@ def camp(t):
             "glow": [{"h": 0.06, "r": 0.04, "x": -0.35, "y": -0.35, "color": WARM, "strength": 15, "light": 30}]}
 
 
-GEN = {"lantern": lantern, "beacon": beacon, "ballista": ballista, "brazier": brazier, "catapult": catapult, "prism": prism,
+def workshop(t):
+    parts = [P("survival", "structure-roof" if t >= 2 else "structure", (0, 0.25), 0, 0, 1.5),
+             P("survival", "workbench-anvil", (0.45, -0.45), 0, 30, 1.6), P("survival", "workbench", (-0.45, -0.4), 0, 0, 1.4),
+             P("survival", "barrel", (0.75, 0.55), 0, 0, 1.2)]
+    if t >= 3:
+        parts += [P("castle", "flag-banner-short", (-0.8, 0.7), 0, 0, 0.9), P("survival", "tool-hammer-upgraded", (0.2, -0.85), 0, 60, 1.4)]
+    return {"size": 3, "fill": 0.9, "parts": parts,
+            "glow": [{"h": 0.25, "r": 0.04, "x": 0.45, "y": -0.45, "color": WARM, "strength": 10, "light": 25}]}
+
+
+GEN = {"workshop": workshop, "lantern": lantern, "beacon": beacon, "ballista": ballista, "brazier": brazier, "catapult": catapult, "prism": prism,
        "wall": wall, "oreMine": ore_mine, "aetherWell": aether_well, "oreStore": ore_store, "aetherStore": aether_store,
        "barracks": barracks, "camp": camp}
 

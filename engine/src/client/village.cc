@@ -35,7 +35,7 @@ const lf::BType kShopTabs[4][6] = {
     {lf::BType::Ballista, lf::BType::Brazier, lf::BType::Catapult, lf::BType::Prism, lf::BType::Count, lf::BType::Count},
     {lf::BType::Beacon, lf::BType::Wall, lf::BType::Count, lf::BType::Count, lf::BType::Count, lf::BType::Count},
     {lf::BType::OreMine, lf::BType::AetherWell, lf::BType::OreStore, lf::BType::AetherStore, lf::BType::BuilderHut, lf::BType::Count},
-    {lf::BType::Barracks, lf::BType::Camp, lf::BType::Count, lf::BType::Count, lf::BType::Count, lf::BType::Count},
+    {lf::BType::Barracks, lf::BType::Camp, lf::BType::Workshop, lf::BType::Count, lf::BType::Count, lf::BType::Count},
 };
 const char* kShopTabNames[4] = {"Оборона", "Свет и стены", "Экономика", "Армия"};
 }  // namespace
@@ -197,6 +197,7 @@ void App::villageFrame(float dt, const std::vector<input::Event>& worldEvents) {
         case Modal::Codex: drawCodex(); break;
         case Modal::Menu: drawMenu(); break;
         case Modal::Tasks: drawTasks(); break;
+        case Modal::Workshop: drawWorkshop(); break;
         default: break;
     }
     if (modal != Modal::None) gfx::popScale();
@@ -343,6 +344,57 @@ void App::drawVillageHud() {
     }
 }
 
+void App::drawWorkshop() {
+    ui::Rect body;
+    if (!modalFrame("Кузница", 800, 380, body)) return;
+    long long tnow = now();
+    V::tick(S, tnow);
+    int maxLv = V::troopMaxLevel(S);
+    std::string head = "Уровень отрядов до " + std::to_string(maxLv) + " (улучши Кузницу, чтобы поднять предел).";
+    if (S.researchType >= 0) {
+        head = std::string("Сейчас: ") + lf::T((lf::TroopType)S.researchType).name + " — готово через " + fmtTime((S.researchUntil - tnow) / 1000.0);
+        int sc = std::max(1, (int)std::ceil((S.researchUntil - tnow) / 60000.0));
+        if (ui::button({body.x + body.w - 180, body.y - 4, 180, 36}, "Ускорить  " + std::to_string(sc), ui::Style::Gold, S.shards >= sc, 15)) {
+            S.shards -= sc;
+            S.researchUntil = tnow;
+            V::tick(S, tnow);
+            audio::play("done");
+            save();
+        }
+    }
+    font::draw(head, body.x, body.y + 4, 15, kInk, font::Left, false);
+    float cw = (body.w - 5 * 8) / 6, ch = body.h - 46, cx = body.x, cy = body.y + 42;
+    for (int i = 0; i < lf::kPlayerTroops; i++) {
+        auto type = (lf::TroopType)i;
+        const auto& d = lf::T(type);
+        int lv = S.troopLevel[i];
+        bool unlocked = V::barracksLevel(S) >= d.unlock;
+        auto can = V::canResearch(S, type, tnow);
+        ui::Rect r{cx, cy, cw, ch};
+        atlas::draw9(atlas::get(unlocked ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 24, 12);
+        world::drawTroopThumb(type, cx + cw / 2, cy + ch * 0.27f, ch * 0.42f);
+        font::draw(d.name, cx + cw / 2, cy + ch * 0.5f, 14, kInk, font::Center, false);
+        for (int s = 0; s < V::kMaxTroopLevel; s++)
+            ui::icon(s < lv ? "icon/star" : "icon/star_off", cx + cw / 2 - 36 + s * 18, cy + ch * 0.5f + 30, 16);
+        char buf[48];
+        std::snprintf(buf, sizeof buf, "+%d%% силы", (int)std::lround((V::troopMult(lv) - 1) * 100));
+        font::draw(buf, cx + cw / 2, cy + ch * 0.5f + 42, 12, kInkSoft, font::Center, false);
+        if (S.researchType == i) font::draw("куётся...", cx + cw / 2, cy + ch - 30, 14, rgba(40, 130, 40), font::Center, false);
+        else if (lv >= V::kMaxTroopLevel) font::draw("максимум", cx + cw / 2, cy + ch - 30, 13, kInkSoft, font::Center, false);
+        else if (unlocked) {
+            int cost = V::researchCost(type, lv + 1);
+            costLabel(lf::Res::Aether, cost, cx + cw / 2, cy + ch - 46, 14, S.aether >= cost ? kInk : rgba(200, 50, 40), 1);
+            font::draw(fmtTime(V::researchTime(type, lv + 1)), cx + cw / 2, cy + ch - 24, 12, kInkSoft, font::Center, false);
+        } else font::draw("не открыт", cx + cw / 2, cy + ch - 30, 13, kInkSoft, font::Center, false);
+        if (ui::tapped(r) && unlocked && S.researchType != i) {
+            auto res = V::startResearch(S, type, tnow);
+            if (!res.ok) toast(res.reason, kBad);
+            else { audio::play("upgrade"); save(); }
+        }
+        cx += cw + 8;
+    }
+}
+
 void App::drawTasks() {
     ui::Rect body;
     if (!modalFrame("Задания", 800, 380, body)) return;
@@ -415,6 +467,7 @@ void App::drawSelectedPanel() {
     if (d.produces != lf::Res::None && b->level >= 1 && !busy)
         btns.push_back({d.produces == lf::Res::Ore ? "icon/ore" : "icon/aether", fmtNum((long long)amount), ui::Style::Green, amount >= 1, 3, lf::Res::None, 0});
     if (b->type == lf::BType::Barracks || b->type == lf::BType::Camp) btns.push_back({"icon/army", "Армия", ui::Style::Normal, true, 4, lf::Res::None, 0});
+    if (b->type == lf::BType::Workshop && b->level >= 1) btns.push_back({"icon/builder", "Усилить", ui::Style::Gold, true, 5, lf::Res::None, 0});
     float gap = 86, x0 = cam.w / 2 - (btns.size() - 1) * gap / 2;
     for (size_t i = 0; i < btns.size(); i++) {
         const auto& bt = btns[i];
@@ -443,6 +496,7 @@ void App::drawSelectedPanel() {
                     break;
                 }
                 case 4: modal = Modal::Army; selected = -1; break;
+                case 5: modal = Modal::Workshop; selected = -1; break;
             }
         }
         if (bt.res != lf::Res::None && bt.cost > 0) {

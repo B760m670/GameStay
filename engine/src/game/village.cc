@@ -315,6 +315,36 @@ int addXp(VillageState& S, long long amount) {
     return ups;
 }
 
+float troopMult(int level) { return 1.f + 0.12f * (std::max(1, level) - 1); }
+int troopMaxLevel(const VillageState& S) {
+    int w = 0;
+    for (const auto& b : S.buildings) if (b.type == BType::Workshop) w = std::max(w, b.level);
+    return w > 0 ? std::min(kMaxTroopLevel, w + 1) : 1;
+}
+int researchCost(TroopType t, int toLevel) { return T(t).cost * 30 * (toLevel - 1) * (toLevel - 1) + 500; }
+int researchTime(TroopType t, int toLevel) { return 120 * (toLevel - 1) * (toLevel - 1); }
+
+Result canResearch(const VillageState& S, TroopType t, long long now) {
+    int i = (int)t;
+    if (troopMaxLevel(S) <= 1) return Result::no("Построй Кузницу");
+    if (S.researchType >= 0 && S.researchUntil > now) return Result::no("Кузница занята");
+    if (barracksLevel(S) < T(t).unlock) return Result::no("Отряд ещё не открыт");
+    int next = S.troopLevel[i] + 1;
+    if (next > troopMaxLevel(S)) return Result::no(S.troopLevel[i] >= kMaxTroopLevel ? "Максимальный уровень" : "Улучши Кузницу");
+    if (S.aether < researchCost(t, next)) return Result::no("Не хватает Эфира");
+    return Result::yes();
+}
+
+Result startResearch(VillageState& S, TroopType t, long long now) {
+    auto c = canResearch(S, t, now);
+    if (!c.ok) return c;
+    int next = S.troopLevel[(int)t] + 1;
+    S.aether -= researchCost(t, next);
+    S.researchType = (int)t;
+    S.researchUntil = now + researchTime(t, next) * 1000LL;
+    return Result::yes();
+}
+
 namespace {
 const League kLeagues[] = {
     {"Медь", 0, 0.00f, 0xff5a8ad0u}, {"Бронза", 100, 0.05f, 0xff3a7ac8u}, {"Серебро", 300, 0.10f, 0xffd8d0c8u},
@@ -392,6 +422,13 @@ void tick(VillageState& S, long long now) {
             finishBuild(b, std::min(now, b.busyUntil));
             addXp(S, xp);
         }
+    if (S.researchType >= 0 && S.researchUntil <= now) {
+        S.troopLevel[S.researchType] = std::min(kMaxTroopLevel, S.troopLevel[S.researchType] + 1);
+        S.researchType = -1;
+        S.researchUntil = 0;
+        S.stats.upgrades++;
+        addXp(S, 15);
+    }
     int nb = barracksCount(S);
     if (!S.trainQueue.empty() && nb > 0) {
         double budget = (now - S.trainTickAt) / 1000.0 * nb;
@@ -443,6 +480,9 @@ std::string save(const VillageState& S) {
     o << "started " << (S.started ? 1 : 0) << "\n";
     o << "xp " << S.level << " " << S.xp << "\n";
     o << "rating " << S.rating << "\n";
+    o << "troops";
+    for (int n : S.troopLevel) o << " " << n;
+    o << " " << S.researchType << " " << S.researchUntil << "\n";
     o << "stats2 " << S.stats.built << " " << S.stats.upgrades << " " << S.stats.oreCollected << " " << S.stats.aetherCollected << " "
       << S.stats.beaconsDestroyed << " " << S.stats.stars << " " << S.stats.trained << "\n";
     for (const auto& [id, tier] : S.tasks) o << "task " << id << " " << tier << "\n";
@@ -478,6 +518,7 @@ bool load(const std::string& text, VillageState& out) {
         else if (k == "started") { int v; l >> v; S.started = v != 0; }
         else if (k == "xp") l >> S.level >> S.xp;
         else if (k == "rating") l >> S.rating;
+        else if (k == "troops") { for (auto& n : S.troopLevel) l >> n; l >> S.researchType >> S.researchUntil; }
         else if (k == "stats2") l >> S.stats.built >> S.stats.upgrades >> S.stats.oreCollected >> S.stats.aetherCollected >> S.stats.beaconsDestroyed >> S.stats.stars >> S.stats.trained;
         else if (k == "task") { std::string id; int tier; l >> id >> tier; S.tasks[id] = tier; }
         else if (k == "army") for (auto& n : S.army) l >> n;

@@ -188,6 +188,12 @@ void App::frame(float dt, float width, float height) {
 }
 
 // ---------- запуск боёв ----------
+static std::map<lf::TroopType, int> levelMap(const lf::VillageState& S) {
+    std::map<lf::TroopType, int> m;
+    for (int i = 0; i < lf::kPlayerTroops; i++) m[(lf::TroopType)i] = S.troopLevel[i];
+    return m;
+}
+
 static std::map<lf::TroopType, int> armyMap(const lf::VillageState& S) {
     std::map<lf::TroopType, int> m;
     for (int i = 0; i < lf::kPlayerTroops; i++) if (S.army[i] > 0) m[(lf::TroopType)i] = S.army[i];
@@ -199,6 +205,7 @@ void App::startMission(int idx) {
     lf::BattleOptions o;
     o.layout = lf::basegen::generate(ms.LL, ms.seed, &ms.counts, ms.richness, ms.levelBias);
     o.army = armyMap(S);
+    o.troopLevels = levelMap(S);
     o.eclipseCharges = lf::eclipseCharges(lf::village::lanternLevel(S));
     o.seed = ms.seed;
     enterBattle(std::make_unique<lf::Battle>(o), BattleKind::Mission, ms.title, idx);
@@ -212,6 +219,7 @@ void App::startRaid() {
     lf::BattleOptions o;
     o.layout = lf::basegen::generate(eLL, seed, nullptr, 0.7f + rng.nextf() * 0.6f);
     o.army = armyMap(S);
+    o.troopLevels = levelMap(S);
     o.eclipseCharges = lf::eclipseCharges(LL);
     o.seed = seed;
     std::string name = lf::basegen::rivalName(rng) + " · Фонарь " + std::to_string(eLL);

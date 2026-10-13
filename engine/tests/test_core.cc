@@ -198,6 +198,34 @@ TEST(tasks_progress_and_claim) {
     CHECK(village::load(village::save(S), L) && village::taskClaimed(L, t) == 1 && L.stats.built == 5, "");
 }
 
+TEST(workshop_research_and_battle_levels) {
+    auto S = village::create(0);
+    CHECK(!village::canResearch(S, TroopType::Torch, 0).ok, "");
+    S.buildings[0].level = 3;  // Фонарь 3 открывает Кузницу
+    S.ore = S.aether = 1000000;
+    village::addRes(S, Res::Aether, 0);
+    S.buildings.push_back(BuildingRec{999, BType::Workshop, 30, 30, 1});
+    CHECK(village::troopMaxLevel(S) == 2, "max=%d", village::troopMaxLevel(S));
+    S.aether = 100000;
+    CHECK(village::startResearch(S, TroopType::Torch, 0).ok, "");
+    CHECK(!village::canResearch(S, TroopType::Archer, 1000).ok, "busy");
+    village::tick(S, 10'000'000);
+    CHECK(S.troopLevel[0] == 2 && S.researchType == -1, "lvl=%d", S.troopLevel[0]);
+    VillageState L;
+    CHECK(village::load(village::save(S), L) && L.troopLevel[0] == 2, "");
+    // уровень отряда усиливает его в бою
+    auto run = [](int lvl) {
+        BattleOptions o;
+        o.layout = basegen::generate(2, 4);
+        o.army[TroopType::Torch] = 25;
+        o.troopLevels[TroopType::Torch] = lvl;
+        Battle B(o);
+        for (int k = 0; k < 25; k++) B.deploy(TroopType::Torch, 1 + k * 0.2f, 1);
+        return B.simulate().pct;
+    };
+    CHECK(run(5) >= run(1), "");
+}
+
 int main() {
     for (auto& [name, fn] : registry()) {
         int before = failures;

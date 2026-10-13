@@ -73,7 +73,7 @@ constexpr float kWallCost = 10.f;
 
 Battle::Battle(const BattleOptions& o)
     : mode(o.mode), duration(o.duration), rng(o.seed), eclipseChargesLeft(o.eclipseCharges), pool(o.army),
-      tileOwner(kGrid * kGrid, -1), waves(o.waves), hazeMult(o.hazeMult) {
+      tileOwner(kGrid * kGrid, -1), waves(o.waves), hazeMult(o.hazeMult), troopLevels(o.troopLevels) {
     for (size_t idx = 0; idx < o.layout.size(); idx++) {
         const auto& it = o.layout[idx];
         const BuildingDef& d = B(it.type);
@@ -126,6 +126,10 @@ bool Battle::canDeploy(float x, float y) const {
 int Battle::spawn(TroopType type, float x, float y) {
     const TroopDef& d = T(type);
     float hpMult = mode == BattleMode::Defense ? hazeMult : 1.f;
+    if (!d.haze) {
+        auto it = troopLevels.find(type);
+        if (it != troopLevels.end()) hpMult *= village::troopMult(it->second);
+    }
     BTroop t;
     t.id = nextId++;
     t.type = type;
@@ -134,6 +138,7 @@ int Battle::spawn(TroopType type, float x, float y) {
     t.y = y;
     t.hp = t.maxHp = d.hp * hpMult;
     t.dmgMult = mode == BattleMode::Defense ? 1.f + (hazeMult - 1.f) * 0.5f : 1.f;
+    if (!d.haze && troopLevels.count(type)) t.dmgMult *= village::troopMult(troopLevels.at(type));
     t.air = d.air;
     t.jx = (rng.nextf() - 0.5f) * 0.6f;
     t.jy = (rng.nextf() - 0.5f) * 0.6f;

@@ -29,6 +29,7 @@ const int kLimits[kBTypes][6] = {
     {0, 0, 1, 1, 2, 2},           // Catapult
     {0, 0, 0, 1, 1, 2},           // Prism
     {20, 35, 55, 80, 110, 150},   // Wall
+    {0, 0, 1, 1, 1, 1},           // Workshop
 };
 
 std::vector<BuildingDef> makeBuildings() {
@@ -104,6 +105,10 @@ std::vector<BuildingDef> makeBuildings() {
     W.type = BType::Wall; W.id = "wall"; W.name = "Стена"; W.size = 1; W.maxLevel = 6; W.category = Category::Wall; W.costRes = Res::Ore;
     W.desc = "Задерживает наземных врагов.";
     W.cost = {50, 150, 500, 1200, 3000, 7000}; W.time = {0, 0, 0, 0, 0, 0}; W.hp = {300, 550, 900, 1400, 2100, 3000};
+    auto& K = v[(int)BType::Workshop];
+    K.type = BType::Workshop; K.id = "workshop"; K.name = "Кузница"; K.size = 3; K.maxLevel = 4; K.category = Category::Army; K.costRes = Res::Aether;
+    K.desc = "Здесь куют оружие и доспехи: каждый уровень отряда даёт +12% к здоровью и урону. Уровень Кузницы ограничивает уровень отрядов.";
+    K.cost = {3000, 9000, 25000, 60000}; K.time = {120, 600, 1500, 3000}; K.hp = {800, 950, 1120, 1300};
     return v;
 }
 
