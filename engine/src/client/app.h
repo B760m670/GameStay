@@ -1,0 +1,130 @@
+#pragma once
+// Клиент Lanternfall: сцены деревни и боя, модальные окна, диалоги, сохранения.
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "camera.h"
+#include "engine/input.h"
+#include "engine/ui.h"
+#include "game/core.h"
+
+namespace client {
+
+enum class Scene { Village, Battle };
+enum class Modal { None, Shop, Army, Map, Night, Codex, Menu, Result };
+enum class BattleKind { Raid, Mission, Night };
+
+struct Toast { std::string text; float t; uint32_t color; };
+
+struct Placing {
+    bool active = false;
+    lf::BType type = lf::BType::Wall;
+    int x = 0, y = 0;
+    int moveId = -1;   // >=0 — перенос существующей постройки
+    bool valid = false;
+    std::string reason;
+    int dirX = 1, dirY = 0;
+    float grabX = 0, grabY = 0;
+    bool dragging = false;
+};
+
+struct BattleState {
+    std::unique_ptr<lf::Battle> b;
+    BattleKind kind = BattleKind::Raid;
+    int missionIdx = -1;
+    std::string title;
+    bool started = false;
+    float scout = 30, acc = 0, holdT = 0, endDelay = 0;
+    int speed = 1;
+    int sel = -1;                 // индекс типа войск, 100 — Затмение
+    bool holding = false;
+    Vec2 holdPos{0, 0};
+    std::vector<std::pair<int, float>> flashes;  // клетка, время
+    float warnT = 0;
+    bool resultShown = false;
+    // итог
+    lf::BattleResult res;
+    long long gotOre = 0, gotAether = 0, gotShards = 0, lostOre = 0, lostAether = 0;
+    bool firstWin = false;
+};
+
+class App {
+public:
+    void init();
+    void frame(float dt, float width, float height);
+    void save();
+    lf::VillageState& state() { return S; }
+
+    // для автотестов
+    void startMission(int idx);
+    void startRaid();
+    void startNight();
+    void skipDialogue() { dlg.clear(); }
+    void autoDeploy();
+    Scene scene = Scene::Village;
+    Modal modal = Modal::None;
+
+private:
+    // общее
+    lf::VillageState S;
+    Camera cam;
+    Gestures gest;
+    float t = 0, tickT = 0, saveT = 0;
+    float safeX = 12, safeB = 10;
+    struct Focus { bool pending = false; float x = 22, y = 22, r = 10, maxZ = 1.2f; } focus;
+    void requestFocus(float x, float y, float r, float maxZ) { focus = {true, x, y, r, maxZ}; }
+    std::vector<Toast> toasts;
+    void toast(const std::string& s, uint32_t color = 0xffffffffu);
+    void drawToasts(float dt);
+    long long now() const;
+
+    // диалоги
+    std::vector<lf::Line> dlg;
+    size_t dlgIdx = 0;
+    float dlgT = 0;
+    std::function<void()> dlgDone;
+    void dialogue(const std::vector<lf::Line>& lines, std::function<void()> done = nullptr);
+    bool drawDialogue();
+
+    // деревня
+    int selected = -1;
+    Placing placing;
+    int mapTab = 0, shopTab = 0, codexPage = 0;
+    bool resetArmed = false;
+    void enterVillage();
+    void villageFrame(float dt, const std::vector<input::Event>& world);
+    void villageInput();
+    void drawVillageWorld();
+    void drawVillageHud();
+    void drawSelectedPanel();
+    void drawPlacingPanel();
+    void drawShop();
+    void drawArmy();
+    void drawMap();
+    void drawNight();
+    void drawCodex();
+    void drawMenu();
+    void startPlacing(lf::BType t);
+    void validatePlacing();
+    void confirmPlacing();
+    int buildingAt(float wx, float wy) const;
+    bool modalFrame(const char* title, float w, float h, ui::Rect& body);
+
+    // бой
+    BattleState bt;
+    void enterBattle(std::unique_ptr<lf::Battle> b, BattleKind kind, const std::string& title, int missionIdx = -1);
+    void battleFrame(float dt, const std::vector<input::Event>& world);
+    void battleInput();
+    void drawBattleWorld();
+    void drawBattleHud();
+    void finishBattle();
+    void drawResult();
+    bool tryBattleAction(Vec2 w);
+};
+
+std::string fmtNum(long long n);
+std::string fmtTime(double seconds);
+
+}  // namespace client

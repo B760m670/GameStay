@@ -243,45 +243,55 @@ def render_building(name, recipe, opts):
 
 
 def render_unit(name, recipe, opts):
-    """Юнит: 8 направлений × кадры указанных анимаций -> отдельные PNG."""
+    """Юнит: 8 направлений × кадры анимаций. Модель импортируется один раз на направление."""
     assets = opts["assets"]
-    for anim, frames in recipe["anims"].items():
-        for d in range(recipe.get("dirs", 8)):
+    out_dir = os.path.join(opts["out"], "units", name)
+    os.makedirs(out_dir, exist_ok=True)
+    scale = None
+    pivot = None
+    for d in range(recipe.get("dirs", 8)):
+        sc = reset_scene(opts["samples"])
+        path = os.path.join(assets, recipes.KITS[recipe["kit"]], recipe["model"] + ".glb")
+        new = import_part(path, (0, 0, 0), 0, 1)
+        arm = next((o for o in new if o.type == "ARMATURE"), None)
+        if arm is not None:
+            # в персонажах Kenney лежит служебная сфера без родителя — убираем
+            stray = [o for o in new if o.type == "MESH" and o.parent is None]
+            new = [o for o in new if o not in stray]
+            for o in stray:
+                bpy.data.objects.remove(o, do_unlink=True)
+            arm.animation_data_create()
+        roots = [o for o in new if o.parent is None]
+        for r in roots:
+            r.rotation_mode = "XYZ"
+            r.rotation_euler.z = math.radians(45 - d * 45 + recipe.get("yaw", 0))
+        for mat_name, color in recipe.get("tint", {}).items():
+            m = bpy.data.materials.get(mat_name)
+            if m and m.use_nodes:
+                bsdf = m.node_tree.nodes.get("Principled BSDF")
+                if bsdf:
+                    bsdf.inputs["Base Color"].default_value = (*color, 1)
+        bpy.context.view_layer.update()
+        if scale is None:
+            mn, mx = bounds_evaluated(new)
+            scale = (recipe["height"] / max(0.01, mx.z - mn.z), mn.z)
+        for r in roots:
+            r.scale = Vector(r.scale) * scale[0]
+            r.location = (Vector(r.location) - Vector((0, 0, scale[1]))) * scale[0] + Vector((0, 0, recipe.get("lift", 0)))
+        bpy.context.view_layer.update()
+        cam, pivot = setup_camera(1, recipe["height"] * 1.15 + recipe.get("lift", 0))
+        for anim, frames in recipe["anims"].items():
+            act = next((a for a in bpy.data.actions if a.name.split("_")[0] == anim), None)
+            if arm is not None and act is not None:
+                arm.animation_data.action = act
             for fi, frame in enumerate(frames):
-                sc = reset_scene(opts["samples"])
-                path = os.path.join(assets, recipes.KITS[recipe["kit"]], recipe["model"] + ".glb")
-                new = import_part(path, (0, 0, 0), 0, 1)
-                arm = next((o for o in new if o.type == "ARMATURE"), None)
-                if arm is not None:
-                    # в персонажах Kenney лежит служебная сфера без родителя — убираем
-                    stray = [o for o in new if o.type == "MESH" and o.parent is None]
-                    new = [o for o in new if o not in stray]
-                    for o in stray:
-                        bpy.data.objects.remove(o, do_unlink=True)
-                act = next((a for a in bpy.data.actions if a.name.startswith(anim)), None)
-                if arm is not None and act is not None:
-                    arm.animation_data_create()
-                    arm.animation_data.action = act
+                if act is not None:
                     sc.frame_set(int(act.frame_range[0] + (act.frame_range[1] - act.frame_range[0]) * frame))
-                roots = [o for o in new if o.parent is None]
-                # направление d: 0 = к камере (экран вниз), далее по часовой на экране
-                for r in roots:
-                    r.rotation_mode = "XYZ"
-                    r.rotation_euler.z = math.radians(45 - d * 45 + recipe.get("yaw", 0))
-                bpy.context.view_layer.update()
-                mn, mx = bounds_evaluated(new)
-                s = recipe["height"] / max(0.01, mx.z - mn.z)
-                for r in roots:
-                    r.scale = Vector(r.scale) * s
-                    r.location = (Vector(r.location) - Vector((0, 0, mn.z))) * s
-                bpy.context.view_layer.update()
-                cam, pivot = setup_camera(1, recipe["height"] * 1.1, extra_w=0)
-                out = os.path.join(opts["out"], "units", name, f"{anim}_{d}_{fi}.png")
-                os.makedirs(os.path.dirname(out), exist_ok=True)
+                out = os.path.join(out_dir, f"{anim}_{d}_{fi}.png")
                 sc.render.filepath = out
                 bpy.ops.render.render(write_still=True)
                 clean_alpha(out)
-    with open(os.path.join(opts["out"], "units", name, "meta.json"), "w") as f:
+    with open(os.path.join(out_dir, "meta.json"), "w") as f:
         json.dump({"pivot": [round(pivot[0], 1), round(pivot[1], 1)], "anims": {k: len(v) for k, v in recipe["anims"].items()},
                    "dirs": recipe.get("dirs", 8)}, f)
     print(f"[sprites] unit {name} done")

@@ -1,25 +1,43 @@
 # Lanternfall — Хранители Мглы
 
-Мобильная стратегия о свете и Мгле (iOS, Unity). Диздок: [`docs/GDD.md`](docs/GDD.md).
+Мобильная 2D-стратегия о свете и Мгле для iOS на **собственном движке** (C++17 + sokol). Диздок: [`docs/GDD.md`](docs/GDD.md).
+
+![Деревня](docs/art/preview-village.png)
 
 ## Структура
 
 | Папка | Что внутри |
 |---|---|
-| `unity/` | Unity-проект (Unity 6000.3). `Assets/Game/Core` — игровое ядро на чистом C# без UnityEngine: деревня, детерминированная симуляция боя, генерация баз, кампания. |
-| `core-tests/` | Тесты ядра на xUnit — запускаются без Unity: `dotnet test core-tests` |
+| `engine/src/game` | Игровое ядро без зависимостей от движка: деревня, детерминированный бой, генерация баз, кампания |
+| `engine/src/engine` | Движок: пакетный 2D-рендер (Metal / OpenGL), атласы, шрифт с кириллицей, UI, ввод |
+| `engine/src/client` | Игра: изометрическая камера, деревня, бой, окна, сюжетные диалоги |
+| `engine/src/platform` | Платформенный слой (iOS / Linux), реализации sokol и stb |
+| `engine/tests` | Тесты ядра (`lf_tests`) |
+| `engine/ios` | Сборка `.ipa` без Xcode-проекта (clang + iOS SDK) |
+| `engine/assets` | Атласы спрайтов и шрифт |
+| `art/` | Конвейер графики: Blender-пререндер 3D-моделей Kenney (CC0) в спрайты, упаковка атласов |
 | `distribution/` | Иконка и генератор источника для LiveContainer |
-| `prototype-web/` | Первый браузерный прототип механики (для справки) |
-| `.github/workflows/build.yml` | CI: тесты → Unity → Xcode → неподписанный `.ipa` в Releases |
+| `prototype-web/` | Первый браузерный прототип механики (источник текстов сюжета) |
 
-## Установка на iPhone через LiveContainer
+## Сборка и запуск (Linux)
 
-После каждой сборки в `main` GitHub Actions публикует релиз с `Lanternfall.ipa` и `source.json`.
+```bash
+cmake -S engine -B engine/build && cmake --build engine/build -j
+engine/build/lf_tests                                 # тесты ядра
+cd engine && LANTERNFALL_ASSETS=assets ./build/lanternfall --size 844x390
+```
+
+## Графика
+
+```bash
+art/fetch_assets.sh /opt/assets                                            # модели Kenney (CC0)
+blender -b --factory-startup -P art/blender/render_sprites.py -- --assets /opt/assets --out art/out
+python3 art/pack_atlas.py art/out engine/assets/atlas
+```
+
+## iPhone через LiveContainer
+
+Каждый пуш в `main` собирает `.ipa` на macOS в GitHub Actions и публикует релиз.
 
 - Источник (AltStore-формат): `https://github.com/B760m670/GameStay/releases/latest/download/source.json`
-- Или напрямую `.ipa` из последнего релиза: `https://github.com/B760m670/GameStay/releases/latest/download/Lanternfall.ipa`
-
-## Секреты для сборки iOS
-
-В Settings → Secrets and variables → Actions нужны `UNITY_EMAIL`, `UNITY_PASSWORD`, `UNITY_LICENSE`
-(содержимое файла лицензии Unity Personal `.ulf`). Без них CI запускает только тесты ядра.
+- Прямая ссылка на `.ipa`: `https://github.com/B760m670/GameStay/releases/latest/download/Lanternfall.ipa`

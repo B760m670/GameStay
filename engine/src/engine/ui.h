@@ -1,0 +1,35 @@
+#pragma once
+// Немедленный UI: виджеты рисуются каждый кадр и сами проверяют нажатия.
+// Касание, начатое на виджете, «съедается» UI и не двигает камеру.
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "input.h"
+
+namespace ui {
+
+struct Rect {
+    float x, y, w, h;
+    bool contains(float px, float py) const { return px >= x && py >= y && px < x + w && py < y + h; }
+};
+
+enum class Style { Normal, Gold, Green, Red, Dark };
+
+// Принимает события кадра, возвращает те, что достались миру.
+std::vector<input::Event> beginFrame(const std::vector<input::Event>& events);
+void endFrame();
+
+// Зарегистрировать область, перехватывающую касания (панели, затемнения модалок).
+void block(const Rect& r);
+void panel(const Rect& r, Style s = Style::Normal);
+bool button(const Rect& r, const std::string& label, Style s = Style::Normal, bool enabled = true, float textSize = 0);
+// Кнопка-иконка с подписью снизу.
+bool iconButton(const Rect& r, const std::string& icon, const std::string& label, Style s = Style::Normal, bool highlight = false);
+void label(const std::string& text, float x, float y, float size, uint32_t color, int align = 0);
+void bar(const Rect& r, float frac, uint32_t color);
+void icon(const std::string& name, float cx, float cy, float size, uint32_t color = 0xffffffffu);
+// Прямоугольник, по которому было касание-клик (без отрисовки).
+bool tapped(const Rect& r);
+
+}  // namespace ui

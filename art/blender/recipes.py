@@ -74,9 +74,61 @@ BUILDINGS = {
         "glow": [{"h": 0.35, "r": 0.05, "color": AETHER, "strength": 4, "light": 40}],
     },
     "wall": {"size": 1, "fill": 1.0, "parts": [P("castle", "wall-half")]},
+    "oreMine": {
+        "size": 3, "fill": 0.9,
+        "parts": [P("survival", "structure", (0, 0)), P("survival", "resource-stone-large", (0.6, -0.55)),
+                  P("survival", "resource-stone", (-0.55, -0.6)), P("survival", "rock-a", (0.75, 0.55), rot=40),
+                  P("survival", "tool-pickaxe", (0.2, -0.75), rot=30), P("town", "cart", (-0.65, 0.45), rot=200, scale=0.8)],
+    },
+    "oreStore": {
+        "size": 3, "fill": 0.88,
+        "parts": [P("survival", "box-large", (0.35, 0.35)), P("survival", "box-large", (-0.35, 0.35)),
+                  P("survival", "box-large", (0.35, -0.35)), P("survival", "box-large", (-0.35, -0.35)),
+                  P("survival", "box-large", (0, 0), "top"), P("survival", "barrel", (0.8, -0.8)),
+                  P("survival", "resource-stone-large", (-0.75, -0.8), scale=0.8)],
+    },
+    "aetherStore": {
+        "size": 3, "fill": 0.9,
+        "parts": [P("town", "fountain-square-detail"), P("td", "detail-crystal-large", (0, 0), 0.15, 0, 1.6),
+                  P("td", "detail-crystal", (0.4, -0.3), 0.15, 30, 1.2), P("td", "detail-crystal", (-0.35, 0.35), 0.15, 70, 1.1)],
+        "glow": [{"h": 0.45, "r": 0.06, "color": AETHER, "strength": 6, "light": 50}],
+    },
+    "camp": {
+        "size": 3, "fill": 0.92,
+        "parts": [P("survival", "tent", (0.5, 0.45), rot=200), P("survival", "tent-canvas", (-0.55, 0.4), rot=160),
+                  P("survival", "campfire-pit", (0.1, -0.35)), P("survival", "bedroll", (-0.6, -0.55), rot=20),
+                  P("survival", "signpost-single", (0.85, -0.75))],
+        "glow": [{"h": 0.08, "r": 0.04, "x": 0.1, "y": -0.35, "color": WARM, "strength": 15, "light": 30}],
+    },
+    "builderHut": {"size": 2, "fill": 0.9, "parts": house(1, 1, 1, roof="roof-point") + [P("survival", "workbench-anvil", (0.95, -0.2), scale=0.7)]},
+    "brazier": {
+        "size": 2, "fill": 0.8,
+        "parts": [P("grave", "pillar-square", (0, 0), 0, 0, 1.4), P("grave", "fire-basket", (0, 0), "top", 0, 1.6)],
+        "glow": [{"h": 0.92, "r": 0.09, "color": WARM, "strength": 20, "light": 80}],
+    },
+    "catapult": {
+        "size": 3, "fill": 0.88,
+        "parts": [P("survival", "structure-floor", (0, 0), 0, 0, 1.4), P("castle", "siege-catapult", (0, 0), "top", -45, 1.0)],
+    },
+    "prism": {
+        "size": 2, "fill": 0.75,
+        "parts": [P("grave", "pillar-obelisk", (0, 0), 0, 0, 1.0), P("td", "detail-crystal-large", (0, 0), "top", 0, 1.6)],
+        "glow": [{"h": 0.85, "r": 0.08, "color": (1.0, 0.45, 0.9), "strength": 10, "light": 60}],
+    },
 }
 
+WALK = [0.0, 0.25, 0.5, 0.75]
+HIT = [0.25, 0.55]
+
 UNITS = {
-    "torch": {"kit": "chars", "model": "character-male-a", "height": 0.95, "dirs": 8, "anims": {"walk": [0.0, 0.5]}},
-    "ghost": {"kit": "grave", "model": "character-ghost", "height": 0.95, "dirs": 8, "anims": {"idle": [0.0]}},
+    "torch": {"kit": "chars", "model": "character-male-a", "height": 0.95, "anims": {"walk": WALK, "attack-melee-right": HIT}},
+    "archer": {"kit": "chars", "model": "character-female-a", "height": 0.9, "anims": {"walk": WALK, "holding-right-shoot": HIT}},
+    "shield": {"kit": "chars", "model": "character-male-c", "height": 1.15, "anims": {"walk": WALK, "attack-melee-left": HIT}},
+    "sapper": {"kit": "chars", "model": "character-male-e", "height": 0.85, "anims": {"sprint": WALK, "interact-right": HIT}},
+    "shade": {"kit": "grave", "model": "character-vampire", "height": 1.0, "anims": {"sprint": WALK, "attack-melee-right": HIT}},
+    "owl": {"kit": "chars", "model": "character-female-c", "height": 0.9, "lift": 0.0, "anims": {"fall": WALK, "holding-both-shoot": HIT}},
+    "morok": {"kit": "grave", "model": "character-ghost", "height": 0.85, "anims": {"walk": WALK, "attack-melee-right": HIT}},
+    "brute": {"kit": "grave", "model": "character-zombie", "height": 1.35, "anims": {"walk": WALK, "attack-melee-right": HIT}},
+    "leech": {"kit": "grave", "model": "character-skeleton", "height": 0.95, "anims": {"sprint": WALK, "attack-melee-left": HIT}},
+    "wraith": {"kit": "grave", "model": "character-ghost", "height": 1.25, "anims": {"fall": WALK, "holding-both-shoot": HIT}},
 }

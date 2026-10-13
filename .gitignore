@@ -4,3 +4,6 @@ node_modules/
 .DS_Store
 art/out/
 __pycache__/
+engine/build/
+engine/shots/
+engine/save/
