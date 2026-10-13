@@ -12,7 +12,16 @@ namespace client::world {
 
 const atlas::Sprite* buildingSprite(lf::BType type, int level);
 
+constexpr int kPad = 9;  // сколько клеток мира рисуем за краем игрового поля (лес, скалы)
 void drawGround(const Camera& cam);
+// Утоптанная земля под постройкой.
+void drawDirt(const Camera& cam, float x, float y, float size);
+// Детали луга (трава, цветы, камешки) — под постройками.
+void drawMeadow(const Camera& cam);
+struct Decor { const char* sprite; float x, y; int size; float depth; };
+// Лес и скалы за краем поля (сортируются вместе с постройками по глубине).
+const std::vector<Decor>& decor();
+void drawDecor(const Camera& cam, const Decor& d);
 // Туман: темнота везде, кроме кругов света. Плюс тёплое свечение источников.
 void drawFog(const Camera& cam, const std::vector<lf::LightSource>& src, const std::vector<lf::Eclipse>& ecl, float t,
              float darkness = 0.74f, bool forbidTint = false);

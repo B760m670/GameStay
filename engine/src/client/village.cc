@@ -207,10 +207,13 @@ void App::drawVillageWorld() {
     lf::VillageState view = S;
     if (placing.active && placing.moveId >= 0)
         for (auto& b : view.buildings) if (b.id == placing.moveId) { b.x = placing.x; b.y = placing.y; }
+    for (const auto& b : view.buildings) if (b.type != lf::BType::Wall) world::drawDirt(cam, (float)b.x, (float)b.y, (float)b.def().size);
+    world::drawMeadow(cam);
     world::drawFog(cam, V::sources(view), {}, t);
-    struct Item { float depth; const lf::BuildingRec* b; bool ghost; };
+    struct Item { float depth; const lf::BuildingRec* b; bool ghost; const world::Decor* d = nullptr; };
     std::vector<Item> items;
     for (const auto& b : view.buildings) items.push_back({(float)(b.x + b.y + b.def().size), &b, false});
+    for (const auto& d : world::decor()) items.push_back({d.depth, nullptr, false, &d});
     lf::BuildingRec ghost;
     if (placing.active && placing.moveId < 0) {
         ghost.type = placing.type;
@@ -222,6 +225,7 @@ void App::drawVillageWorld() {
     std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) { return a.depth < b.depth; });
     long long tnow = now();
     for (const auto& it : items) {
+        if (it.d) { world::drawDecor(cam, *it.d); continue; }
         const auto& b = *it.b;
         world::BuildingLook look;
         look.selected = b.id == selected && !placing.active;

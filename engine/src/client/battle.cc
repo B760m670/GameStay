@@ -123,16 +123,21 @@ void App::battleFrame(float dt, const std::vector<input::Event>& worldEvents) {
 void App::drawBattleWorld() {
     auto& B = *bt.b;
     world::drawGround(cam);
+    for (const auto& b : B.buildings) if (!b.isWall()) world::drawDirt(cam, (float)b.x, (float)b.y, (float)b.size);
+    world::drawMeadow(cam);
     bool tint = bt.kind != BattleKind::Night && bt.sel >= 0 && bt.sel != kEclipseSel && !B.ended;
     world::drawFog(cam, B.sources, B.eclipses, t, 0.76f, tint);
     for (auto& f : bt.flashes) world::drawFootprint(cam, (float)(f.first % lf::kGrid), (float)(f.first / lf::kGrid), 1, rgba(255, 60, 60, (int)(f.second * 400)));
     struct Item { float depth; int kind, idx; };
     std::vector<Item> items;
+    const auto& dec = world::decor();
+    for (size_t i = 0; i < dec.size(); i++) items.push_back({dec[i].depth, 2, (int)i});
     for (size_t i = 0; i < B.buildings.size(); i++) items.push_back({B.buildings[i].cx + B.buildings[i].cy, 0, (int)i});
     for (size_t i = 0; i < B.troops.size(); i++)
         if (!B.troops[i].dead) items.push_back({B.troops[i].x + B.troops[i].y + (B.troops[i].air ? 3.f : 0.f), 1, (int)i});
     std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) { return a.depth < b.depth; });
     for (const auto& it : items) {
+        if (it.kind == 2) { world::drawDecor(cam, dec[it.idx]); continue; }
         if (it.kind == 0) {
             const auto& b = B.buildings[it.idx];
             world::BuildingLook look;

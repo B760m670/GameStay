@@ -177,6 +177,13 @@ DECOR = {
     "bush": ("plant_bushLarge", 1, 1.0), "bush2": ("plant_bushDetailed", 1, 0.9), "stump": ("stump_oldTall", 1, 0.8),
     "mushrooms": ("mushroom_redGroup", 1, 0.7), "flowers": ("flower_yellowA", 1, 0.6), "logs": ("log_stack", 1, 1.0),
 }
+# Мелкие детали луга: трава, цветы, камешки, грибы.
+DECOR.update({
+    "grass": ("grass_large", 1, 0.45), "grass2": ("grass_leafsLarge", 1, 0.45), "grass3": ("grass", 1, 0.35),
+    "fl_purple": ("flower_purpleA", 1, 0.3), "fl_red": ("flower_redB", 1, 0.3), "fl_yellow": ("flower_yellowC", 1, 0.3),
+    "pebble": ("rock_smallFlatA", 1, 0.35), "pebble2": ("rock_smallB", 1, 0.3), "shroom": ("mushroom_tanGroup", 1, 0.35),
+    "bush_small": ("plant_bushSmall", 1, 0.5),
+})
 for _k, (_m, _s, _f) in DECOR.items():
     BUILDINGS[f"decor_{_k}"] = {"size": _s, "fill": _f, "parts": [P("nature", _m)]}
 

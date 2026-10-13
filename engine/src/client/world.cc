@@ -79,23 +79,100 @@ const atlas::Sprite* buildingSprite(lf::BType type, int level) {
 void drawGround(const Camera& cam) {
     const float s = cam.zoom * 0.5f;
     std::string name;
-    for (int j = 0; j < lf::kGrid; j++)
-        for (int i = 0; i < lf::kGrid; i++) {
+    for (int j = -kPad; j < lf::kGrid + kPad; j++)
+        for (int i = -kPad; i < lf::kGrid + kPad; i++) {
             Vec2 p = cam.toScreen(i + 0.5f, j + 0.5f);
             if (p.x < -kTW * cam.zoom || p.x > cam.w + kTW * cam.zoom || p.y < -kTH * cam.zoom || p.y > cam.h + kTH * cam.zoom) continue;
             bool edge = i < lf::kBorder || j < lf::kBorder || i >= lf::kGrid - lf::kBorder || j >= lf::kGrid - lf::kBorder;
-            uint32_t h = hash2(i, j);
+            uint32_t h = hash2(i + 100, j + 100);
             name = edge ? "g/edge" + std::to_string(h % 3) : "g/grass" + std::to_string(h % 6);
             atlas::draw(atlas::get(name), p.x, p.y, s);
         }
 }
 
+void drawDirt(const Camera& cam, float x, float y, float size) {
+    Vec2 c = cam.toScreen(x + size / 2, y + size / 2);
+    float rx = (size + 0.9f) * kTW * cam.zoom / 2, ry = rx / 2;
+    ellipseSprite("fx/soft", c.x, c.y, rx * 1.05f, ry * 1.05f, rgba(92, 70, 44, 120));
+    ellipseSprite("fx/soft", c.x, c.y, rx * 0.8f, ry * 0.8f, rgba(110, 84, 52, 110));
+}
+
+namespace {
+struct Detail { const atlas::Sprite* sp; float x, y; };
+std::vector<Detail>& meadow() {
+    static std::vector<Detail> v;
+    static bool built = false;
+    if (built) return v;
+    built = true;
+    static const char* kinds[] = {"b/decor_grass", "b/decor_grass2", "b/decor_grass3", "b/decor_grass", "b/decor_fl_purple", "b/decor_fl_red",
+                                  "b/decor_fl_yellow", "b/decor_pebble", "b/decor_pebble2", "b/decor_shroom", "b/decor_bush_small"};
+    for (int j = lf::kBorder; j < lf::kGrid - lf::kBorder; j++)
+        for (int i = lf::kBorder; i < lf::kGrid - lf::kBorder; i++) {
+            uint32_t h = hash2(i * 3 + 7, j * 5 + 11);
+            if (h % 100 >= 16) continue;
+            const atlas::Sprite* sp = atlas::get(kinds[(h >> 8) % 11]);
+            if (!sp) continue;
+            v.push_back({sp, i + 0.2f + ((h >> 12) & 15) / 25.f, j + 0.2f + ((h >> 16) & 15) / 25.f});
+        }
+    return v;
+}
+}  // namespace
+
+void drawMeadow(const Camera& cam) {
+    for (const auto& d : meadow()) {
+        Vec2 p = cam.toScreen(d.x, d.y);
+        if (p.x < -40 || p.x > cam.w + 40 || p.y < -40 || p.y > cam.h + 40) continue;
+        atlas::draw(d.sp, p.x, p.y, cam.zoom * 0.5f);
+    }
+}
+
+const std::vector<Decor>& decor() {
+    static std::vector<Decor> v;
+    static bool built = false;
+    if (built) return v;
+    built = true;
+    static const char* trees[] = {"b/decor_oak", "b/decor_oak_dark", "b/decor_fat", "b/decor_detailed", "b/decor_pine", "b/decor_pine2", "b/decor_cone", "b/decor_tall"};
+    static const char* small[] = {"b/decor_rock_tall", "b/decor_rock_small", "b/decor_bush", "b/decor_bush2", "b/decor_stump", "b/decor_mushrooms", "b/decor_logs"};
+    std::vector<uint8_t> used((lf::kGrid + 2 * kPad) * (lf::kGrid + 2 * kPad), 0);
+    auto idx = [&](int i, int j) { return (j + kPad) * (lf::kGrid + 2 * kPad) + (i + kPad); };
+    for (int j = -kPad; j < lf::kGrid + kPad - 1; j++)
+        for (int i = -kPad; i < lf::kGrid + kPad - 1; i++) {
+            bool outside = i < 0 || j < 0 || i >= lf::kGrid || j >= lf::kGrid;
+            if (!outside) continue;
+            uint32_t h = hash2(i * 13 + 5, j * 17 + 3);
+            int dist = std::max({-i, -j, i - lf::kGrid + 1, j - lf::kGrid + 1});  // насколько далеко за краем
+            int chance = dist <= 1 ? 22 : 45;
+            if ((int)(h % 100) >= chance) continue;
+            bool big = (h >> 9) % 100 < 60 && i + 1 < lf::kGrid + kPad && j + 1 < lf::kGrid + kPad;
+            int sz = big ? 2 : 1;
+            bool freeCells = true;
+            for (int dy = 0; dy < sz; dy++)
+                for (int dx = 0; dx < sz; dx++)
+                    if (used[idx(i + dx, j + dy)]) freeCells = false;
+            if (!freeCells) continue;
+            for (int dy = 0; dy < sz; dy++)
+                for (int dx = 0; dx < sz; dx++) used[idx(i + dx, j + dy)] = 1;
+            const char* name = big ? ((h >> 13) % 6 == 0 ? "b/decor_rock_large" : trees[(h >> 15) % 8]) : small[(h >> 15) % 7];
+            v.push_back({name, (float)i, (float)j, sz, i + j + sz * 1.f});
+        }
+    return v;
+}
+
+void drawDecor(const Camera& cam, const Decor& d) {
+    Vec2 c = cam.toScreen(d.x + d.size / 2.f, d.y + d.size / 2.f);
+    if (c.x < -200 || c.x > cam.w + 200 || c.y < -60 || c.y > cam.h + 300) return;
+    // всё за краем поля — во Мгле: тёмные холодные силуэты
+    atlas::draw(atlas::get(d.sprite), c.x, c.y, cam.zoom * 0.5f, rgba(70, 66, 104));
+}
+
 void drawFog(const Camera& cam, const std::vector<lf::LightSource>& src, const std::vector<lf::Eclipse>& ecl, float t, float darkness,
              bool forbidTint) {
-    constexpr int N = lf::kGrid + 1;
+    constexpr int M = lf::kGrid + 2 * kPad;  // клеток по стороне вместе с краем
+    constexpr int N = M + 1;
     static float L[N * N];
-    for (int j = 0; j < N; j++)
-        for (int i = 0; i < N; i++) {
+    for (int jj = 0; jj < N; jj++)
+        for (int ii = 0; ii < N; ii++) {
+            float i = (float)(ii - kPad), j = (float)(jj - kPad);
             float best = 0;
             for (const auto& s : src) {
                 float d = std::hypot(i - s.x, j - s.y);
@@ -105,14 +182,15 @@ void drawFog(const Camera& cam, const std::vector<lf::LightSource>& src, const s
                 float d = std::hypot(i - e.x, j - e.y);
                 best *= smoothstep(e.r - 1.2f, e.r + 0.3f, d);
             }
-            L[j * N + i] = best;
+            L[jj * N + ii] = best;
         }
     const uint32_t fog = rgba(14, 9, 30), red = rgba(150, 20, 30);
-    for (int j = 0; j < lf::kGrid; j++)
-        for (int i = 0; i < lf::kGrid; i++) {
-            Vec2 a = cam.toScreen((float)i, (float)j), b = cam.toScreen(i + 1.f, (float)j), c = cam.toScreen(i + 1.f, j + 1.f), d = cam.toScreen((float)i, j + 1.f);
+    for (int jj = 0; jj < M; jj++)
+        for (int ii = 0; ii < M; ii++) {
+            float i = (float)(ii - kPad), j = (float)(jj - kPad);
+            Vec2 a = cam.toScreen(i, j), b = cam.toScreen(i + 1.f, j), c = cam.toScreen(i + 1.f, j + 1.f), d = cam.toScreen(i, j + 1.f);
             if (b.x < 0 || d.x > cam.w || a.y > cam.h || c.y < 0) continue;
-            float la = L[j * N + i], lb = L[j * N + i + 1], lc = L[(j + 1) * N + i + 1], ld = L[(j + 1) * N + i];
+            float la = L[jj * N + ii], lb = L[jj * N + ii + 1], lc = L[(jj + 1) * N + ii + 1], ld = L[(jj + 1) * N + ii];
             if (la > 0.999f && lb > 0.999f && lc > 0.999f && ld > 0.999f && !forbidTint) continue;
             auto col = [&](float l) {
                 if (forbidTint && l > 0.5f) return gfx::withAlpha(red, 0.22f * l);
