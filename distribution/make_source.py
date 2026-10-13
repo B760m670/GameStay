@@ -32,7 +32,7 @@ source = {
             "date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "downloadURL": url,
             "size": os.path.getsize(ipa),
-            "minOSVersion": "15.0",
+            "minOSVersion": "16.0",
         }],
         "appPermissions": {"entitlements": [], "privacy": {}},
     }],

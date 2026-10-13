@@ -14,7 +14,7 @@ mkdir -p "$APP" "$WORK/obj"
 SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
 CC="$(xcrun --sdk iphoneos --find clang)"
 CXX="$(xcrun --sdk iphoneos --find clang++)"
-COMMON=(-arch arm64 -isysroot "$SDK" -miphoneos-version-min=15.0 -Os -DNDEBUG -DSOKOL_METAL
+COMMON=(-arch arm64 -isysroot "$SDK" -miphoneos-version-min=16.0 -Os -DNDEBUG -DSOKOL_METAL
         -I"$ROOT/src" -I"$ROOT/third_party/sokol" -I"$ROOT/third_party/stb" -fvisibility=hidden -ffunction-sections -fdata-sections)
 
 objs=()
@@ -34,7 +34,7 @@ compile "$ROOT/src/platform/sokol_impl.cc" objcxx
 compile "$ROOT/src/platform/platform_ios.mm" objcxx
 
 "$CXX" "${COMMON[@]}" -o "$APP/Lanternfall" "${objs[@]}" -Wl,-dead_strip \
-  -framework Foundation -framework UIKit -framework Metal -framework MetalKit -framework QuartzCore \
+  -framework Foundation -framework UIKit -framework Metal -framework MetalKit -framework QuartzCore -framework CoreGraphics \
   -framework AudioToolbox -framework AVFoundation
 xcrun strip -x "$APP/Lanternfall" || true
 
