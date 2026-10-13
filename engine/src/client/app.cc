@@ -260,6 +260,8 @@ void App::finishBattle() {
         bt.gotAether = lf::village::addRes(S, lf::Res::Aether, r.lootAether);
         S.stats.attacks++;
         if (r.win) S.stats.wins++;
+        S.stats.stars += r.stars;
+        for (const auto& b : bt.b->buildings) if (b.dead && b.type == lf::BType::Beacon) S.stats.beaconsDestroyed++;
         lf::village::addXp(S, 2 + 6LL * r.stars);
         if (bt.kind == BattleKind::Mission) {
             const auto& ms = lf::campaign::missions()[bt.missionIdx];

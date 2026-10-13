@@ -184,6 +184,20 @@ TEST(xp_from_building_and_level_up) {
     CHECK(village::load(village::save(S), L) && L.level == S.level && L.xp == S.xp, "");
 }
 
+TEST(tasks_progress_and_claim) {
+    auto S = village::create(0);
+    const auto& t = village::taskDefs()[0];  // постройки
+    CHECK(!village::taskReady(S, t), "");
+    S.ore = 100000;
+    for (int k = 0; k < 5; k++) village::place(S, BType::Wall, 19 + k, 19, 0);
+    CHECK(S.stats.built == 5 && village::taskReady(S, t), "built=%lld", S.stats.built);
+    long long sh = S.shards;
+    CHECK(village::claimTask(S, t) && S.shards == sh + t.shards[0] && village::taskClaimed(S, t) == 1, "");
+    CHECK(!village::claimTask(S, t), "");
+    VillageState L;
+    CHECK(village::load(village::save(S), L) && village::taskClaimed(L, t) == 1 && L.stats.built == 5, "");
+}
+
 int main() {
     for (auto& [name, fn] : registry()) {
         int before = failures;

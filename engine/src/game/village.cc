@@ -148,6 +148,7 @@ long long collect(VillageState& S, int id, long long now) {
     b->acc = amount - (double)got;
     b->accAt = now;
     if (got >= 50) addXp(S, 1 + got / 1000);
+    (b->def().produces == Res::Ore ? S.stats.oreCollected : S.stats.aetherCollected) += got;
     return got;
 }
 
@@ -211,6 +212,7 @@ Result place(VillageState& S, BType t, int x, int y, long long now, int* placedI
     if (time > 0) b.busyUntil = now + time * 1000LL;
     if (placedId) *placedId = b.id;
     S.buildings.push_back(b);
+    S.stats.built++;
     if (time == 0) addXp(S, 1);
     return Result::yes();
 }
@@ -251,7 +253,7 @@ Result startUpgrade(VillageState& S, int id, long long now) {
     BuildingRec* b = get(S, id);
     S.setRes(info.res, S.res(info.res) - info.cost);
     if (info.time > 0) b->busyUntil = now + info.time * 1000LL;
-    else { finishBuild(*b, now); addXp(S, 1); }
+    else { finishBuild(*b, now); addXp(S, 1); S.stats.upgrades++; }
     return Result::yes();
 }
 
@@ -313,10 +315,66 @@ int addXp(VillageState& S, long long amount) {
     return ups;
 }
 
+const std::vector<TaskDef>& taskDefs() {
+    static const std::vector<TaskDef> v = {
+        {"build", "Строитель", "Построй новых построек: %s", Metric::Built, {5, 20, 60}, {3, 6, 12}, {10, 30, 80}},
+        {"upgrade", "Мастер на все руки", "Заверши улучшений: %s", Metric::Upgrades, {3, 15, 50}, {3, 6, 12}, {10, 30, 80}},
+        {"ore", "Рудокоп", "Собери руды из шахт: %s", Metric::Ore, {2000, 25000, 250000}, {2, 5, 10}, {10, 25, 60}},
+        {"aether", "Собиратель Эфира", "Собери Эфира из колодцев: %s", Metric::Aether, {2000, 25000, 250000}, {2, 5, 10}, {10, 25, 60}},
+        {"beacons", "Гаситель", "Погаси вражеских Светочей: %s", Metric::Beacons, {3, 20, 100}, {3, 8, 20}, {15, 40, 100}},
+        {"stars", "Звёздный налёт", "Получи звёзд в боях: %s", Metric::Stars, {5, 30, 150}, {3, 8, 20}, {15, 40, 100}},
+        {"nights", "Страж ночи", "Переживи ночей Мглы: %s", Metric::Nights, {1, 10, 50}, {3, 8, 20}, {15, 40, 100}},
+        {"trained", "Наставник", "Обучи войск: %s", Metric::Trained, {20, 200, 1000}, {2, 5, 10}, {10, 25, 60}},
+        {"lantern", "Ярче Мглы", "Улучши Фонарь до уровня %s", Metric::Lantern, {2, 4, 6}, {5, 12, 30}, {25, 60, 150}},
+    };
+    return v;
+}
+
+long long taskProgress(const VillageState& S, const TaskDef& t) {
+    switch (t.metric) {
+        case Metric::Built: return S.stats.built;
+        case Metric::Upgrades: return S.stats.upgrades;
+        case Metric::Ore: return S.stats.oreCollected;
+        case Metric::Aether: return S.stats.aetherCollected;
+        case Metric::Beacons: return S.stats.beaconsDestroyed;
+        case Metric::Stars: return S.stats.stars;
+        case Metric::Nights: return S.stats.nightsWon;
+        case Metric::Trained: return S.stats.trained;
+        case Metric::Lantern: return lanternLevel(S);
+    }
+    return 0;
+}
+
+int taskClaimed(const VillageState& S, const TaskDef& t) {
+    auto it = S.tasks.find(t.id);
+    return it == S.tasks.end() ? 0 : it->second;
+}
+
+bool taskReady(const VillageState& S, const TaskDef& t) {
+    int c = taskClaimed(S, t);
+    return c < 3 && taskProgress(S, t) >= t.goal[c];
+}
+
+int tasksReady(const VillageState& S) {
+    int n = 0;
+    for (const auto& t : taskDefs()) n += taskReady(S, t);
+    return n;
+}
+
+bool claimTask(VillageState& S, const TaskDef& t) {
+    if (!taskReady(S, t)) return false;
+    int c = taskClaimed(S, t);
+    S.shards += t.shards[c];
+    S.tasks[t.id] = c + 1;
+    addXp(S, t.xp[c]);
+    return true;
+}
+
 void tick(VillageState& S, long long now) {
     for (auto& b : S.buildings)
         if (b.busyUntil != 0 && b.busyUntil <= now) {
             long long xp = buildXp(b);
+            if (b.level >= 1) S.stats.upgrades++;
             finishBuild(b, std::min(now, b.busyUntil));
             addXp(S, xp);
         }
@@ -330,6 +388,7 @@ void tick(VillageState& S, long long now) {
             budget -= use;
             if (q.left <= 1e-4f) {
                 S.army[(int)q.type]++;
+                S.stats.trained++;
                 S.trainQueue.erase(S.trainQueue.begin());
             }
         }
@@ -369,6 +428,9 @@ std::string save(const VillageState& S) {
     o << "stats " << S.stats.attacks << " " << S.stats.wins << " " << S.stats.nightsWon << " " << S.stats.nightsLost << "\n";
     o << "started " << (S.started ? 1 : 0) << "\n";
     o << "xp " << S.level << " " << S.xp << "\n";
+    o << "stats2 " << S.stats.built << " " << S.stats.upgrades << " " << S.stats.oreCollected << " " << S.stats.aetherCollected << " "
+      << S.stats.beaconsDestroyed << " " << S.stats.stars << " " << S.stats.trained << "\n";
+    for (const auto& [id, tier] : S.tasks) o << "task " << id << " " << tier << "\n";
     o << "army";
     for (int n : S.army) o << " " << n;
     o << "\n";
@@ -400,6 +462,8 @@ bool load(const std::string& text, VillageState& out) {
         else if (k == "stats") l >> S.stats.attacks >> S.stats.wins >> S.stats.nightsWon >> S.stats.nightsLost;
         else if (k == "started") { int v; l >> v; S.started = v != 0; }
         else if (k == "xp") l >> S.level >> S.xp;
+        else if (k == "stats2") l >> S.stats.built >> S.stats.upgrades >> S.stats.oreCollected >> S.stats.aetherCollected >> S.stats.beaconsDestroyed >> S.stats.stars >> S.stats.trained;
+        else if (k == "task") { std::string id; int tier; l >> id >> tier; S.tasks[id] = tier; }
         else if (k == "army") for (auto& n : S.army) l >> n;
         else if (k == "b") {
             BuildingRec b;

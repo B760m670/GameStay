@@ -113,7 +113,21 @@ struct BuildingRec {
 
 struct TrainItem { TroopType type; float left; };
 
-struct Stats { int attacks = 0, wins = 0, nightsWon = 0, nightsLost = 0; };
+struct Stats {
+    int attacks = 0, wins = 0, nightsWon = 0, nightsLost = 0;
+    long long built = 0, upgrades = 0, oreCollected = 0, aetherCollected = 0, beaconsDestroyed = 0, stars = 0, trained = 0;
+};
+
+// Задания: три ступени, награда за каждую.
+enum class Metric { Built, Upgrades, Ore, Aether, Beacons, Stars, Nights, Trained, Lantern };
+struct TaskDef {
+    const char* id;
+    const char* title;
+    const char* desc;   // %s — цель
+    Metric metric;
+    long long goal[3];
+    int shards[3], xp[3];
+};
 
 struct VillageState {
     static constexpr int kVersion = 1;
@@ -130,6 +144,7 @@ struct VillageState {
     int nights = 0;
     Stats stats;
     bool started = false;
+    std::map<std::string, int> tasks;  // id -> сколько ступеней уже забрано
     long long xp = 0;      // опыт внутри текущего уровня
     int level = 1;         // уровень игрока
     int levelUps = 0;      // не сохраняется: сколько повышений клиент ещё не показал
@@ -196,6 +211,12 @@ bool nightDue(const VillageState& S, long long now);
 long long xpToNext(int level);
 int addXp(VillageState& S, long long amount);
 int levelReward(int level);
+const std::vector<TaskDef>& taskDefs();
+long long taskProgress(const VillageState& S, const TaskDef& t);
+int taskClaimed(const VillageState& S, const TaskDef& t);
+bool taskReady(const VillageState& S, const TaskDef& t);   // текущая ступень выполнена и не забрана
+int tasksReady(const VillageState& S);
+bool claimTask(VillageState& S, const TaskDef& t);
 void scheduleNextNight(VillageState& S, long long now);
 std::vector<LayoutItem> layout(const VillageState& S, float lootFrac = 0.f);
 std::string save(const VillageState& S);

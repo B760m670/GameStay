@@ -196,6 +196,7 @@ void App::villageFrame(float dt, const std::vector<input::Event>& worldEvents) {
         case Modal::Night: drawNight(); break;
         case Modal::Codex: drawCodex(); break;
         case Modal::Menu: drawMenu(); break;
+        case Modal::Tasks: drawTasks(); break;
         default: break;
     }
     if (modal != Modal::None) gfx::popScale();
@@ -315,23 +316,82 @@ void App::drawVillageHud() {
     if (selected >= 0 && V::get(S, selected) && modal == Modal::None) { drawSelectedPanel(); return; }
 
     // нижняя панель
-    const float bw = 70, bh = 62, gap = 8;
-    const int n = 6;
+    const float bw = 70, bh = 62, gap = 7;
+    const int n = 7;
     float total = n * bw + (n - 1) * gap;
     float bx = cam.w / 2 - total / 2, by = cam.h - bh - safeB;
     bool due = V::nightDue(S, tnow);
+    int ready = V::tasksReady(S);
     struct B { const char* icon; std::string label; Modal m; };
     B btns[n] = {{"icon/build", "Строить", Modal::Shop}, {"icon/army", "Армия", Modal::Army}, {"icon/map", "Поход", Modal::Map},
-                 {"icon/night", due ? "Мгла!" : fmtTime((S.nightAt - tnow) / 1000.0), Modal::Night}, {"icon/codex", "Хроника", Modal::Codex},
-                 {"icon/menu", "Меню", Modal::Menu}};
+                 {"icon/night", due ? "Мгла!" : fmtTime((S.nightAt - tnow) / 1000.0), Modal::Night}, {"icon/star", "Задания", Modal::Tasks},
+                 {"icon/codex", "Хроника", Modal::Codex}, {"icon/menu", "Меню", Modal::Menu}};
     for (int i = 0; i < n; i++) {
-        bool hl = i == 3 && due && std::fmod(t, 1.2f) < 0.8f;
-        if (ui::iconButton({bx + i * (bw + gap), by, bw, bh}, btns[i].icon, btns[i].label, i == 2 ? ui::Style::Gold : ui::Style::Normal, hl)) {
+        bool hl = (i == 3 && due && std::fmod(t, 1.2f) < 0.8f) || (i == 4 && ready > 0 && std::fmod(t, 1.4f) < 0.9f);
+        ui::Rect r{bx + i * (bw + gap), by, bw, bh};
+        if (ui::iconButton(r, btns[i].icon, btns[i].label, i == 2 ? ui::Style::Gold : ui::Style::Normal, hl)) {
             modal = btns[i].m;
             audio::play("open", 0.6f);
             selected = -1;
             resetArmed = false;
         }
+        if (i == 4 && ready > 0) {  // значок «есть награда»
+            atlas::drawRect(atlas::get("fx/dot"), r.x + r.w - 20, r.y - 8, 26, 26, rgba(30, 14, 20));
+            atlas::drawRect(atlas::get("fx/dot"), r.x + r.w - 18, r.y - 6, 22, 22, rgba(230, 60, 50));
+            font::draw(std::to_string(ready), r.x + r.w - 7, r.y - 4, 14, 0xffffffffu, font::Center, false);
+        }
+    }
+}
+
+void App::drawTasks() {
+    ui::Rect body;
+    if (!modalFrame("Задания", 800, 380, body)) return;
+    const auto& defs = V::taskDefs();
+    // ready первыми, затем по прогрессу
+    std::vector<const lf::TaskDef*> list;
+    for (const auto& d : defs) list.push_back(&d);
+    std::stable_sort(list.begin(), list.end(), [&](const lf::TaskDef* a, const lf::TaskDef* b) {
+        auto rank = [&](const lf::TaskDef* t) { return V::taskReady(S, *t) ? 0 : V::taskClaimed(S, *t) >= 3 ? 2 : 1; };
+        return rank(a) < rank(b);
+    });
+    int perPage = 4, pages = ((int)list.size() + perPage - 1) / perPage;
+    codexPage = std::clamp(codexPage, 0, pages - 1);
+    float rh = (body.h - 46) / perPage - 6, y = body.y;
+    for (int i = codexPage * perPage; i < std::min((int)list.size(), (codexPage + 1) * perPage); i++) {
+        const auto& d = *list[i];
+        int tier = V::taskClaimed(S, d);
+        bool done = tier >= 3, ready = V::taskReady(S, d);
+        long long goal = d.goal[std::min(tier, 2)], prog = V::taskProgress(S, d);
+        atlas::draw9(atlas::get(done ? "ui/card_dark" : "ui/card"), body.x, y, body.w, rh, 24, 12);
+        for (int s = 0; s < 3; s++) ui::icon(s < tier ? "icon/star" : "icon/star_off", body.x + 22 + s * 24, y + rh / 2, 24);
+        font::draw(d.title, body.x + 96, y + 6, 17, kInk, font::Left, false);
+        char buf[160];
+        std::snprintf(buf, sizeof buf, d.desc, fmtNum(goal).c_str());
+        font::draw(buf, body.x + 96, y + 28, 13, kInkSoft, font::Left, false);
+        float bw2 = body.w - 96 - 220;
+        ui::bar({body.x + 96, y + rh - 18, bw2, 12}, done ? 1.f : (float)std::min(prog, goal) / goal, ready || done ? rgba(110, 210, 80) : rgba(120, 200, 255));
+        font::draw(done ? "выполнено" : fmtNum(std::min(prog, goal)) + " / " + fmtNum(goal), body.x + 96 + bw2 + 8, y + rh - 22, 13, kInk, font::Left, false);
+        if (!done) {
+            float rx = body.x + body.w - 120;
+            if (ready) {
+                if (ui::button({rx, y + rh / 2 - 20, 110, 40}, "Забрать", ui::Style::Green)) {
+                    int sh = d.shards[tier];
+                    V::claimTask(S, d);
+                    audio::play("done");
+                    spawnFlyers(lf::Res::Shards, {rx + 55, y + rh / 2}, sh * 40);
+                    save();
+                }
+            } else {
+                costLabel(lf::Res::Shards, d.shards[tier], rx + 55, y + rh / 2 - 9, 16, kInk, 1);
+            }
+        }
+        y += rh + 6;
+    }
+    float by = body.y + body.h - 40;
+    if (pages > 1) {
+        if (ui::button({body.x + body.w / 2 - 110, by, 44, 38}, "<", ui::Style::Dark, codexPage > 0)) codexPage--;
+        font::draw(std::to_string(codexPage + 1) + "/" + std::to_string(pages), body.x + body.w / 2, by + 9, 16, kInk, font::Center, false);
+        if (ui::button({body.x + body.w / 2 + 66, by, 44, 38}, ">", ui::Style::Dark, codexPage < pages - 1)) codexPage++;
     }
 }
 
