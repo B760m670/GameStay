@@ -1,0 +1,10 @@
+{
+    "name": "Lanternfall.Runtime",
+    "rootNamespace": "Lanternfall",
+    "references": ["Lanternfall.Core"],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "autoReferenced": true,
+    "noEngineReferences": false
+}

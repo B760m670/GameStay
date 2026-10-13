@@ -1,0 +1,115 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-tests:
+    name: Core tests (dotnet)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet test core-tests --nologo
+
+  license:
+    name: Unity license check
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.check.outputs.ok }}
+    steps:
+      - id: check
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          if [ -n "$UNITY_LICENSE" ] && [ -n "$UNITY_EMAIL" ] && [ -n "$UNITY_PASSWORD" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Секреты UNITY_LICENSE / UNITY_EMAIL / UNITY_PASSWORD не заданы — сборка iOS пропущена."
+          fi
+
+  unity-ios:
+    name: Unity → Xcode project
+    needs: [core-tests, license]
+    if: needs.license.outputs.ok == 'true' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
+      - uses: actions/cache@v4
+        with:
+          path: unity/Library
+          key: Library-iOS-${{ hashFiles('unity/Assets/**', 'unity/Packages/**', 'unity/ProjectSettings/**') }}
+          restore-keys: Library-iOS-
+      - uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: unity
+          targetPlatform: iOS
+          buildMethod: Lanternfall.Editor.BuildScript.BuildIOS
+          customParameters: -appVersion 0.1.${{ github.run_number }} -buildNumber ${{ github.run_number }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xcode-project
+          path: build/iOS
+          retention-days: 3
+
+  ipa:
+    name: Xcode → unsigned IPA + LiveContainer source
+    needs: unity-ios
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: xcode-project
+          path: build/iOS
+      - name: Archive (без подписи — LiveContainer подписывает сам)
+        run: |
+          cd build/iOS/iOS
+          xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Lanternfall.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            archive | tail -n 40
+      - name: Package IPA
+        run: |
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$RUNNER_TEMP"/Lanternfall.xcarchive/Products/Applications/*.app "$RUNNER_TEMP/ipa/Payload/"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry "$GITHUB_WORKSPACE/Lanternfall.ipa" Payload)
+          ls -la Lanternfall.ipa
+      - name: Source for LiveContainer
+        run: |
+          TAG="build-${{ github.run_number }}"
+          python3 distribution/make_source.py Lanternfall.ipa "0.1.${{ github.run_number }}" "${{ github.run_number }}" \
+            "https://github.com/${{ github.repository }}/releases/download/$TAG/Lanternfall.ipa" source.json
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Lanternfall 0.1.${{ github.run_number }}
+          body: |
+            Автосборка из ${{ github.sha }}.
+            Источник для LiveContainer: https://github.com/${{ github.repository }}/releases/latest/download/source.json
+          files: |
+            Lanternfall.ipa
+            source.json
+          make_latest: true
