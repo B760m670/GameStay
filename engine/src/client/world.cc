@@ -261,6 +261,26 @@ void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level
     }
 }
 
+const char* moveAnim(lf::TroopType t) { return animsFor(t).move; }
+
+void drawUnit(const Camera& cam, const std::string& unit, const std::string& anim, float angle, int frame, float x, float y, float alpha) {
+    float deg = angle * 57.2958f;
+    int dir = ((int)std::lround((deg - 45.f) / 45.f) % 8 + 8) % 8;
+    const atlas::Sprite* sp = atlas::get("u/" + unit + "/" + anim + "_" + std::to_string(dir) + "_" + std::to_string(frame));
+    if (!sp) return;
+    Vec2 p = cam.toScreen(x, y);
+    atlas::draw(sp, p.x, p.y, cam.zoom * 0.5f, rgba(255, 255, 255, (int)(255 * alpha)));
+}
+
+void drawParticle(const Camera& cam, const Particle& p) {
+    Vec2 s = cam.toScreen(p.x, p.y, p.z);
+    float k = p.life / p.max;
+    float r = p.size * cam.zoom * (p.additive ? 1.f : (1.6f - 0.6f * k));
+    uint32_t c = gfx::withAlpha(p.color, std::min(1.f, k * 2.f) * ((p.color >> 24) & 255) / 255.f);
+    if (p.additive) glowAt(s.x, s.y, r, c);
+    else ellipseSprite("fx/soft", s.x, s.y, r, r, c);
+}
+
 void drawTroop(const Camera& cam, const lf::BTroop& tr, float t) {
     float lift = tr.air ? 46 + std::sin(t * 4 + tr.bob) * 4 : 0;
     Vec2 g = cam.toScreen(tr.x, tr.y);

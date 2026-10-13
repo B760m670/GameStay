@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "camera.h"
+#include "world.h"
 #include "engine/input.h"
 #include "engine/ui.h"
 #include "game/core.h"
@@ -95,6 +96,12 @@ private:
     void drawFlyers(float dt);
     void drawInfo();
     void drawTasks();
+    // жизнь деревни
+    struct Actor { std::string unit; float x, y, tx, ty, angle = 0, wait = 0, anim = 0; int job = -1; bool working = false; };
+    std::vector<Actor> workers, idlers;
+    std::vector<world::Particle> particles;
+    float emitT = 0;
+    void updateLife(float dt);
     void drawWorkshop();
 
     // диалоги

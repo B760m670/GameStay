@@ -37,6 +37,13 @@ void drawFootprint(const Camera& cam, float x, float y, float size, uint32_t col
 void drawBarAt(const Camera& cam, float wx, float wy, float z, float frac, uint32_t color, float width = 40);
 
 void drawTroop(const Camera& cam, const lf::BTroop& tr, float t);
+// Персонаж вне боя (жители, рабочие, войска у лагеря): unit — имя набора спрайтов, angle — мировой угол.
+void drawUnit(const Camera& cam, const std::string& unit, const std::string& anim, float angle, int frame, float x, float y, float alpha = 1.f);
+const char* moveAnim(lf::TroopType t);
+
+// Простые частицы: искры, дым, блики, светлячки.
+struct Particle { float x, y, z, vx, vy, vz, life, max, size; uint32_t color; bool additive; };
+void drawParticle(const Camera& cam, const Particle& p);
 void drawProjectile(const Camera& cam, const lf::Projectile& p);
 void drawBeam(const Camera& cam, const lf::BBuilding& b, const lf::BTroop& tr);
 void drawEffect(const Camera& cam, const lf::Effect& e, float t);

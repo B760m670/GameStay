@@ -131,6 +131,130 @@ int App::buildingAt(float wx, float wy) const {
     return best;
 }
 
+// ---------- жизнь деревни ----------
+void App::updateLife(float dt) {
+    long long tnow = now();
+    static uint32_t seed = 12345;
+    auto rnd = [&]() { seed = seed * 1664525u + 1013904223u; return (seed >> 8) / 16777216.f; };
+    auto center = [](const lf::BuildingRec& b) { float s = b.def().size; return Vec2{b.x + s / 2, b.y + s / 2}; };
+    // рабочие: по одному на каждую стройку, остальные у хижин
+    std::vector<const lf::BuildingRec*> huts, jobs;
+    for (const auto& b : S.buildings) {
+        if (b.type == lf::BType::BuilderHut && b.level >= 1) huts.push_back(&b);
+        if (b.busyUntil > tnow) jobs.push_back(&b);
+    }
+    while (workers.size() < huts.size()) {
+        Vec2 c = center(*huts[workers.size()]);
+        workers.push_back({"worker", c.x + 1.2f, c.y + 1.2f, c.x + 1.2f, c.y + 1.2f});
+    }
+    if (workers.size() > huts.size()) workers.resize(huts.size());
+    for (size_t i = 0; i < workers.size(); i++) {
+        Actor& a = workers[i];
+        const lf::BuildingRec* job = i < jobs.size() ? jobs[i] : nullptr;
+        if (job) {
+            Vec2 c = center(*job);
+            float s = job->def().size;
+            a.tx = c.x + s / 2 + 0.3f;  // у правого угла постройки
+            a.ty = c.y;
+        } else if (!huts.empty()) {
+            Vec2 c = center(*huts[i % huts.size()]);
+            if (std::hypot(a.tx - c.x, a.ty - c.y) > 2.5f || (a.wait <= 0 && std::hypot(a.x - a.tx, a.y - a.ty) < 0.1f)) {
+                a.tx = c.x + 1.0f + rnd() * 1.2f;
+                a.ty = c.y + 0.5f + rnd() * 1.4f;
+                a.wait = 1 + rnd() * 3;
+            }
+        }
+        float dx = a.tx - a.x, dy = a.ty - a.y, d = std::hypot(dx, dy);
+        a.anim += dt;
+        if (d > 0.05f) {
+            float step = std::min(d, 1.3f * dt);
+            a.x += dx / d * step;
+            a.y += dy / d * step;
+            a.angle = std::atan2(dy, dx);
+            a.working = false;
+        } else {
+            a.working = job != nullptr;
+            if (job) {
+                Vec2 c = center(*job);
+                a.angle = std::atan2(c.y - a.y, c.x - a.x);
+                if (std::fmod(a.anim, 0.5f) < dt) {  // искры от молота
+                    particles.push_back({a.x - 0.2f, a.y, 18, (rnd() - 0.5f) * 0.6f, (rnd() - 0.5f) * 0.6f, 40, 0.4f, 0.4f, 6, gfx::rgba(255, 210, 120), true});
+                }
+            }
+            a.wait -= dt;
+        }
+    }
+    // войска у лагеря
+    const lf::BuildingRec* camp = nullptr;
+    for (const auto& b : S.buildings) if (b.type == lf::BType::Camp && b.level >= 1) { camp = &b; break; }
+    size_t want = 0;
+    std::vector<int> kinds;
+    for (int i = 0; i < lf::kPlayerTroops; i++)
+        for (int k = 0; k < std::min(S.army[i], 4); k++) kinds.push_back(i);
+    want = camp ? std::min<size_t>(kinds.size(), 12) : 0;
+    if (idlers.size() != want) {
+        idlers.clear();
+        for (size_t i = 0; i < want; i++) {
+            Vec2 c = center(*camp);
+            Actor a{lf::T((lf::TroopType)kinds[i]).id, c.x + (rnd() - 0.5f) * 3, c.y + (rnd() - 0.5f) * 3, 0, 0};
+            a.tx = a.x; a.ty = a.y; a.job = kinds[i]; a.wait = rnd() * 3;
+            idlers.push_back(a);
+        }
+    }
+    for (auto& a : idlers) {
+        a.anim += dt;
+        float dx = a.tx - a.x, dy = a.ty - a.y, d = std::hypot(dx, dy);
+        if (d > 0.05f) {
+            float step = std::min(d, 0.8f * dt);
+            a.x += dx / d * step;
+            a.y += dy / d * step;
+            a.angle = std::atan2(dy, dx);
+        } else if ((a.wait -= dt) <= 0 && camp) {
+            Vec2 c = center(*camp);
+            a.tx = c.x + (rnd() - 0.5f) * 4.2f;
+            a.ty = c.y + (rnd() - 0.5f) * 4.2f;
+            a.wait = 1.5f + rnd() * 4;
+        }
+    }
+    // частицы
+    emitT += dt;
+    if (emitT > 0.08f) {
+        emitT = 0;
+        for (const auto& b : S.buildings) {
+            if (b.level < 1) continue;
+            Vec2 c = center(b);
+            switch (b.type) {
+                case lf::BType::Lantern:
+                    if (rnd() < 0.6f) particles.push_back({c.x + (rnd() - 0.5f) * 0.6f, c.y + (rnd() - 0.5f) * 0.6f, 110, 0, 0, 25 + rnd() * 20, 1.4f, 1.4f, 5, gfx::rgba(255, 190, 90, 220), true});
+                    break;
+                case lf::BType::Workshop:
+                case lf::BType::Camp:
+                case lf::BType::Barracks:
+                    if (rnd() < 0.35f) particles.push_back({c.x - 0.3f, c.y - 0.3f, b.type == lf::BType::Barracks ? 85.f : 40.f, 0.15f, -0.1f, 22, 2.6f, 2.6f, 9, gfx::rgba(150, 140, 160, 120), false});
+                    break;
+                case lf::BType::AetherWell:
+                case lf::BType::AetherStore:
+                case lf::BType::Beacon:
+                    if (rnd() < 0.3f) particles.push_back({c.x + (rnd() - 0.5f) * 1.2f, c.y + (rnd() - 0.5f) * 1.2f, 20 + rnd() * 30, 0, 0, 18, 1.2f, 1.2f, 6, gfx::rgba(130, 220, 255, 220), true});
+                    break;
+                default: break;
+            }
+        }
+        // светлячки во тьме вокруг поселения
+        if (particles.size() < 400 && rnd() < 0.7f) {
+            float a = rnd() * 6.283f, r = 10 + rnd() * 14;
+            particles.push_back({22 + std::cos(a) * r, 22 + std::sin(a) * r, 10 + rnd() * 30, (rnd() - 0.5f) * 0.4f, (rnd() - 0.5f) * 0.4f, (rnd() - 0.5f) * 6, 4, 4, 5, gfx::rgba(200, 255, 140, 200), true});
+        }
+    }
+    for (auto& p : particles) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt;
+        p.life -= dt;
+    }
+    particles.erase(std::remove_if(particles.begin(), particles.end(), [](const world::Particle& p) { return p.life <= 0; }), particles.end());
+}
+
 void App::startPlacing(lf::BType type) {
     Vec2 c = cam.toWorld(cam.w / 2, cam.h / 2);
     int s = lf::B(type).size;
@@ -179,6 +303,7 @@ void App::villageFrame(float dt, const std::vector<input::Event>& worldEvents) {
     gest.process(worldEvents, cam);
     tickT += dt;
     if (tickT > 0.25f) { tickT = 0; V::tick(S, now()); }
+    updateLife(dt);
     drawVillageWorld();
     drawVillageHud();
     if (modal != Modal::None) {
@@ -212,8 +337,10 @@ void App::drawVillageWorld() {
     for (const auto& b : view.buildings) if (b.type != lf::BType::Wall) world::drawDirt(cam, (float)b.x, (float)b.y, (float)b.def().size);
     world::drawMeadow(cam);
     world::drawFog(cam, V::sources(view), {}, t);
-    struct Item { float depth; const lf::BuildingRec* b; bool ghost; const world::Decor* d = nullptr; };
+    struct Item { float depth; const lf::BuildingRec* b; bool ghost; const world::Decor* d = nullptr; int actor = -1; };
     std::vector<Item> items;
+    for (size_t i = 0; i < workers.size(); i++) items.push_back({workers[i].x + workers[i].y, nullptr, false, nullptr, (int)i});
+    for (size_t i = 0; i < idlers.size(); i++) items.push_back({idlers[i].x + idlers[i].y, nullptr, false, nullptr, 1000 + (int)i});
     for (const auto& b : view.buildings) items.push_back({(float)(b.x + b.y + b.def().size), &b, false});
     for (const auto& d : world::decor()) items.push_back({d.depth, nullptr, false, &d});
     lf::BuildingRec ghost;
@@ -228,6 +355,14 @@ void App::drawVillageWorld() {
     long long tnow = now();
     for (const auto& it : items) {
         if (it.d) { world::drawDecor(cam, *it.d); continue; }
+        if (it.actor >= 0) {
+            const Actor& a = it.actor >= 1000 ? idlers[it.actor - 1000] : workers[it.actor];
+            int frame = a.working ? (int)(a.anim * 6) % 3 : (int)(a.anim * 8) % 4;
+            std::string anim = a.working ? "interact-right" : (a.unit == "worker" ? "walk" : world::moveAnim((lf::TroopType)a.job));
+            if (!a.working && a.wait > 0) frame = 0;
+            world::drawUnit(cam, a.unit, anim, a.angle, frame, a.x, a.y);
+            continue;
+        }
         const auto& b = *it.b;
         world::BuildingLook look;
         look.selected = b.id == selected && !placing.active;
@@ -235,6 +370,10 @@ void App::drawVillageWorld() {
         if (it.ghost || (placing.active && b.id == placing.moveId)) { look.ghost = placing.valid ? 1 : -1; look.alpha = 0.85f; }
         world::drawBuilding(cam, b.type, (float)b.x, (float)b.y, std::max(1, b.level), look, t);
     }
+    for (const auto& p : particles) if (!p.additive) world::drawParticle(cam, p);
+    gfx::setBlend(gfx::Blend::Add);
+    for (const auto& p : particles) if (p.additive) world::drawParticle(cam, p);
+    gfx::setBlend(gfx::Blend::Alpha);
     // индикаторы стройки и сбора
     for (const auto& b : S.buildings) {
         const auto& d = b.def();
