@@ -2,3 +2,4 @@ core-tests/bin/
 core-tests/obj/
 node_modules/
 .DS_Store
+art/out/
