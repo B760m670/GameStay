@@ -170,6 +170,20 @@ TEST(campaign_generates) {
     }
 }
 
+TEST(xp_from_building_and_level_up) {
+    auto S = village::create(0);
+    long long shards0 = S.shards;
+    int lantern = S.buildings[0].id;
+    S.ore = 100000;
+    CHECK(village::startUpgrade(S, lantern, 0).ok, "");
+    village::tick(S, 61000);  // 60 с стройки -> корень = 7 опыта
+    CHECK(S.level == 1 && S.xp == 7, "lvl=%d xp=%lld", S.level, S.xp);
+    village::addXp(S, 100);
+    CHECK(S.level >= 2 && S.shards > shards0 && S.levelUps >= 1, "lvl=%d", S.level);
+    VillageState L;
+    CHECK(village::load(village::save(S), L) && L.level == S.level && L.xp == S.xp, "");
+}
+
 int main() {
     for (auto& [name, fn] : registry()) {
         int before = failures;

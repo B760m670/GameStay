@@ -19,6 +19,13 @@ BuildingRec make(VillageState& S, BType t, int x, int y, int level, long long no
     return b;
 }
 
+// Опыт за стройку: растёт с длительностью (как корень из секунд), минимум 1.
+long long buildXp(const BuildingRec& b) {
+    const auto& d = b.def();
+    int idx = std::min(b.level, (int)d.time.size() - 1);
+    return std::max(1LL, (long long)std::sqrt((double)std::max(0, d.time[idx])));
+}
+
 void finishBuild(BuildingRec& b, long long now) {
     if (b.def().produces != Res::None) {
         b.acc = collectorAmount(b, now);
@@ -140,6 +147,7 @@ long long collect(VillageState& S, int id, long long now) {
     long long got = addRes(S, b->def().produces, (long long)std::floor(amount));
     b->acc = amount - (double)got;
     b->accAt = now;
+    if (got >= 50) addXp(S, 1 + got / 1000);
     return got;
 }
 
@@ -203,6 +211,7 @@ Result place(VillageState& S, BType t, int x, int y, long long now, int* placedI
     if (time > 0) b.busyUntil = now + time * 1000LL;
     if (placedId) *placedId = b.id;
     S.buildings.push_back(b);
+    if (time == 0) addXp(S, 1);
     return Result::yes();
 }
 
@@ -242,7 +251,7 @@ Result startUpgrade(VillageState& S, int id, long long now) {
     BuildingRec* b = get(S, id);
     S.setRes(info.res, S.res(info.res) - info.cost);
     if (info.time > 0) b->busyUntil = now + info.time * 1000LL;
-    else finishBuild(*b, now);
+    else { finishBuild(*b, now); addXp(S, 1); }
     return Result::yes();
 }
 
@@ -286,9 +295,31 @@ void cancelTrain(VillageState& S, int index) {
     addRes(S, Res::Aether, T(t).cost);
 }
 
+long long xpToNext(int level) { return 30 + 25LL * (level - 1) + 4LL * (level - 1) * (level - 1); }
+int levelReward(int level) { return 2 + level / 3; }
+
+int addXp(VillageState& S, long long amount) {
+    if (amount <= 0) return 0;
+    S.xp += amount;
+    S.lastXpGain = amount;
+    int ups = 0;
+    while (S.xp >= xpToNext(S.level)) {
+        S.xp -= xpToNext(S.level);
+        S.level++;
+        S.shards += levelReward(S.level);
+        ups++;
+    }
+    S.levelUps += ups;
+    return ups;
+}
+
 void tick(VillageState& S, long long now) {
     for (auto& b : S.buildings)
-        if (b.busyUntil != 0 && b.busyUntil <= now) finishBuild(b, std::min(now, b.busyUntil));
+        if (b.busyUntil != 0 && b.busyUntil <= now) {
+            long long xp = buildXp(b);
+            finishBuild(b, std::min(now, b.busyUntil));
+            addXp(S, xp);
+        }
     int nb = barracksCount(S);
     if (!S.trainQueue.empty() && nb > 0) {
         double budget = (now - S.trainTickAt) / 1000.0 * nb;
@@ -337,6 +368,7 @@ std::string save(const VillageState& S) {
     o << "night " << S.nightAt << " " << S.nights << "\n";
     o << "stats " << S.stats.attacks << " " << S.stats.wins << " " << S.stats.nightsWon << " " << S.stats.nightsLost << "\n";
     o << "started " << (S.started ? 1 : 0) << "\n";
+    o << "xp " << S.level << " " << S.xp << "\n";
     o << "army";
     for (int n : S.army) o << " " << n;
     o << "\n";
@@ -367,6 +399,7 @@ bool load(const std::string& text, VillageState& out) {
         else if (k == "night") l >> S.nightAt >> S.nights;
         else if (k == "stats") l >> S.stats.attacks >> S.stats.wins >> S.stats.nightsWon >> S.stats.nightsLost;
         else if (k == "started") { int v; l >> v; S.started = v != 0; }
+        else if (k == "xp") l >> S.level >> S.xp;
         else if (k == "army") for (auto& n : S.army) l >> n;
         else if (k == "b") {
             BuildingRec b;

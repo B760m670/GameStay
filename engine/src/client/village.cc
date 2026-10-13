@@ -259,23 +259,33 @@ void App::drawVillageWorld() {
 
 void App::drawVillageHud() {
     long long tnow = now();
-    // слева: Фонарь, строители, армия
+    // слева: уровень игрока со шкалой опыта, затем Фонарь, строители, армия
     float x = safeX, y = 10;
+    {
+        float bw = 104;
+        ui::panel({x + 18, y + 4, bw, 32}, ui::Style::Dark);
+        long long need = V::xpToNext(S.level);
+        ui::bar({x + 44, y + 18, bw - 34, 12}, (float)S.xp / need, rgba(120, 220, 255));
+        font::draw(fmtNum(S.xp) + "/" + fmtNum(need), x + 44 + (bw - 34) / 2, y + 4, 11, 0xffffffffu, font::Center);
+        atlas::drawRect(atlas::get("ui/round_gold"), x - 2, y - 2, 46, 46);
+        font::draw(std::to_string(S.level), x + 21, y + 9, 19, 0xffffffffu, font::Center);
+        x += bw + 28;
+    }
     auto chip = [&](const char* ic, const std::string& text, float w) {
         ui::panel({x, y, w, 40}, ui::Style::Dark);
         ui::icon(ic, x + 22, y + 20, 30);
         font::draw(text, x + 42, y + 10, 17, 0xffffffffu);
         x += w + 8;
     };
-    chip("icon/lantern", "Фонарь " + std::to_string(V::lanternLevel(S)), 122);
+    chip("icon/lantern", std::to_string(V::lanternLevel(S)), 62);
     auto bl = V::builders(S, tnow);
-    chip("icon/builder", std::to_string(bl.free) + "/" + std::to_string(bl.total), 76);
-    chip("icon/army", std::to_string(V::armyHousing(S)) + "/" + std::to_string(V::campCapacity(S)), 92);
+    chip("icon/builder", std::to_string(bl.free) + "/" + std::to_string(bl.total), 74);
+    chip("icon/army", std::to_string(V::armyHousing(S)) + "/" + std::to_string(V::campCapacity(S)), 84);
     // справа: ресурсы
     float rx = cam.w - safeX;
     auto shown = [&](lf::Res r) -> double& { return r == lf::Res::Ore ? shownOre : r == lf::Res::Aether ? shownAether : shownShards; };
     auto resBar = [&](lf::Res r, uint32_t color) {
-        float w = 150;
+        float w = 128;
         rx -= w;
         long long c = V::cap(S, r);
         double& sv = shown(r);
@@ -291,7 +301,7 @@ void App::drawVillageHud() {
         rx -= 8;
     };
     {
-        float w = 76;
+        float w = 70;
         rx -= w;
         ui::panel({rx, y, w, 40}, ui::Style::Dark);
         ui::icon("icon/shard", rx + 20, y + 20, 28);

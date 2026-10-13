@@ -169,6 +169,14 @@ void App::frame(float dt, float width, float height) {
     if (modal != shownModal) { if (modal != Modal::None) modalT = t; shownModal = modal; }
     if (scene == Scene::Village) villageFrame(dt, world);
     else battleFrame(dt, world);
+    if (S.levelUps > 0 && dlg.empty() && modal == Modal::None) {
+        int reward = lf::village::levelReward(S.level);
+        toast("Новый уровень " + std::to_string(S.level) + "!  +" + std::to_string(reward) + " осколков", gfx::rgba(255, 216, 107));
+        audio::play("win", 0.7f);
+        spawnFlyers(lf::Res::Shards, {cam.w / 2, cam.h / 2}, reward * 40);
+        S.levelUps = 0;
+        save();
+    }
     drawFlyers(dt);
     drawDialogue();
     drawToasts(dt);
@@ -237,6 +245,7 @@ void App::finishBattle() {
         S.aether -= bt.lostAether;
         int LL = lf::village::lanternLevel(S);
         if (r.win) {
+            lf::village::addXp(S, 10LL * LL);
             S.nights++;
             S.stats.nightsWon++;
             bt.gotOre = lf::village::addRes(S, lf::Res::Ore, 150LL * LL * LL);
@@ -251,12 +260,14 @@ void App::finishBattle() {
         bt.gotAether = lf::village::addRes(S, lf::Res::Aether, r.lootAether);
         S.stats.attacks++;
         if (r.win) S.stats.wins++;
+        lf::village::addXp(S, 2 + 6LL * r.stars);
         if (bt.kind == BattleKind::Mission) {
             const auto& ms = lf::campaign::missions()[bt.missionIdx];
             int prev = S.campaign.count(ms.id) ? S.campaign[ms.id] : 0;
             if (r.stars > prev) S.campaign[ms.id] = r.stars;
             if (prev == 0 && r.stars > 0) {
                 bt.firstWin = true;
+                lf::village::addXp(S, 20);
                 bt.gotOre += lf::village::addRes(S, lf::Res::Ore, ms.rewardOre);
                 bt.gotAether += lf::village::addRes(S, lf::Res::Aether, ms.rewardAether);
                 bt.gotShards += ms.rewardShards;

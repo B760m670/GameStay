@@ -130,6 +130,10 @@ struct VillageState {
     int nights = 0;
     Stats stats;
     bool started = false;
+    long long xp = 0;      // опыт внутри текущего уровня
+    int level = 1;         // уровень игрока
+    int levelUps = 0;      // не сохраняется: сколько повышений клиент ещё не показал
+    long long lastXpGain = 0;
 
     long long res(Res r) const { return r == Res::Ore ? ore : r == Res::Aether ? aether : shards; }
     void setRes(Res r, long long v) { (r == Res::Ore ? ore : r == Res::Aether ? aether : shards) = v; }
@@ -188,6 +192,10 @@ Result train(VillageState& S, TroopType t, long long now);
 void cancelTrain(VillageState& S, int index);
 void tick(VillageState& S, long long now);
 bool nightDue(const VillageState& S, long long now);
+// Опыт: сколько нужно до следующего уровня, начислить (с наградой за уровни).
+long long xpToNext(int level);
+int addXp(VillageState& S, long long amount);
+int levelReward(int level);
 void scheduleNextNight(VillageState& S, long long now);
 std::vector<LayoutItem> layout(const VillageState& S, float lootFrac = 0.f);
 std::string save(const VillageState& S);
