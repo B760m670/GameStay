@@ -70,4 +70,5 @@ jobs:
           files: |
             Lanternfall.ipa
             source.json
+            distribution/icon.png
           make_latest: true

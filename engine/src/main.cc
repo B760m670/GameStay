@@ -8,6 +8,7 @@
 
 #include "client/app.h"
 #include "engine/atlas.h"
+#include "engine/audio.h"
 #include "engine/font.h"
 #include "engine/gfx.h"
 #include "engine/input.h"
@@ -34,6 +35,7 @@ void init() {
     std::string assets = platform::assetDir();
     atlas::load(assets + "/atlas");
     font::load(assets + "/fonts/Philosopher-Bold.ttf", 56);
+    if (!opt.shot) audio::init(assets + "/sfx");
     app.init();
     if (!opt.keepDialogue && opt.shot) app.skipDialogue();
     if (opt.scene == "mission") app.startMission(0);
@@ -69,6 +71,7 @@ void event(const sapp_event* e) {
 
 void cleanup() {
     app.save();
+    audio::shutdown();
     gfx::shutdown();
 }
 }  // namespace

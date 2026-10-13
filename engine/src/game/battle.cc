@@ -147,6 +147,7 @@ bool Battle::deploy(TroopType type, float x, float y) {
     if (ended || it == pool.end() || it->second <= 0) return false;
     if (!canDeploy(x, y)) return false;
     spawn(type, x, y);
+    events.push_back({Ev::Deploy, x, y, BType::Lantern});
     it->second--;
     used[type]++;
     lastDeployAt = time;
@@ -277,6 +278,7 @@ void Battle::troopAttack(int ti, int bi) {
         float ax = t.x + std::cos(t.angle) * 0.4f, ay = t.y + std::sin(t.angle) * 0.4f;
         damageBuilding(bi, dmg, ti);
         effects.push_back({Fx::Hit, ax, ay, 0, 0, 0.2f, 0.2f});
+        events.push_back({Ev::Hit, ax, ay, b.type});
     }
 }
 
@@ -369,6 +371,7 @@ void Battle::updateDefense(int bi, float dt) {
     }
     if (b.cd > 0) return;
     b.cd = b.def->cd;
+    events.push_back({Ev::Shot, b.cx, b.cy, b.type});
     float dmg = (float)b.def->lv(b.def->dmg, b.level);
     if (b.def->proj == Proj::Flame) {
         float tx = tr.x, ty = tr.y;
@@ -495,7 +498,7 @@ void Battle::finish() {
 }
 
 BattleResult Battle::simulate(float maxTime, float dt) {
-    while (!ended && time < maxTime) step(dt);
+    while (!ended && time < maxTime) { step(dt); events.clear(); }
     if (!ended) finish();
     return result;
 }

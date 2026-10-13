@@ -4,6 +4,7 @@
 
 #include "app.h"
 #include "engine/atlas.h"
+#include "engine/audio.h"
 #include "engine/font.h"
 #include "engine/gfx.h"
 #include "world.h"
@@ -90,6 +91,19 @@ void App::battleFrame(float dt, const std::vector<input::Event>& worldEvents) {
         while (bt.acc >= kDT) { B.step(kDT); bt.acc -= kDT; }
     }
     for (const auto& ev : B.events) {
+        float pv = 0.9f + (float)((int)(ev.x * 7 + ev.y * 3) % 5) * 0.05f;  // разброс высоты без ГСЧ боя
+        switch (ev.kind) {
+            case lf::Ev::Shot:
+                audio::play(ev.type == lf::BType::Catapult ? "catapult" : ev.type == lf::BType::Brazier ? "flame" : "shoot", 0.45f, pv);
+                break;
+            case lf::Ev::Hit: audio::play(pv > 1.0f ? "slash" : "hit", 0.35f, pv); break;
+            case lf::Ev::Deploy: audio::play("deploy", 0.5f, pv); break;
+            case lf::Ev::Destroyed: audio::play(ev.type == lf::BType::Wall ? "hit" : "destroy", ev.type == lf::BType::Wall ? 0.5f : 0.9f, pv); break;
+            case lf::Ev::Lantern: audio::play("boom", 1.0f, 0.8f); break;
+            case lf::Ev::EclipseCast: audio::play("eclipse", 0.8f); break;
+            case lf::Ev::Wave: audio::play("wave", 0.7f); break;
+            case lf::Ev::LightsOut: audio::play("eclipse", 0.7f, 0.8f); break;
+        }
         if (ev.kind == lf::Ev::LightsOut) toast("Светоч погас — сектор во тьме!", kGood);
         else if (ev.kind == lf::Ev::Lantern) toast(bt.kind == BattleKind::Night ? "Наш Фонарь пал!" : "Фонарь врага разрушен!", bt.kind == BattleKind::Night ? kBad : kGood);
         else if (ev.kind == lf::Ev::Wave) toast("Мгла выходит из тьмы!", kBad);

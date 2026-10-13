@@ -4,6 +4,7 @@
 
 #include "app.h"
 #include "engine/atlas.h"
+#include "engine/audio.h"
 #include "engine/font.h"
 #include "engine/gfx.h"
 #include "world.h"
@@ -107,6 +108,7 @@ void App::enterVillage() {
         auto* rec = V::get(S, b);
         if (rec->def().produces != lf::Res::None && V::collectorAmount(*rec, now()) >= 1 && selected != b) {
             long long got = V::collect(S, b, now());
+            if (got > 0) audio::play(rec->def().produces == lf::Res::Ore ? "collect_ore" : "collect_aether");
             if (got > 0) toast("+" + fmtNum(got) + (rec->def().produces == lf::Res::Ore ? " руды" : " Эфира"), rec->def().produces == lf::Res::Ore ? kOre : kAether);
             else toast("Хранилища полны", kBad);
         }
@@ -155,6 +157,7 @@ void App::confirmPlacing() {
     int id = -1;
     auto r = V::place(S, placing.type, placing.x, placing.y, now(), &id);
     if (!r.ok) { toast(r.reason, kBad); return; }
+    audio::play("build", 0.8f, 0.9f + (id % 5) * 0.05f);
     save();
     if (placing.type == lf::BType::Wall && V::canBuild(S, lf::BType::Wall, now()).ok) {
         placing.x += placing.dirX;
@@ -289,6 +292,7 @@ void App::drawVillageHud() {
         bool hl = i == 3 && due && std::fmod(t, 1.2f) < 0.8f;
         if (ui::iconButton({bx + i * (bw + gap), by, bw, bh}, btns[i].icon, btns[i].label, i == 2 ? ui::Style::Gold : ui::Style::Normal, hl)) {
             modal = btns[i].m;
+            audio::play("open", 0.6f);
             selected = -1;
             resetArmed = false;
         }
@@ -326,7 +330,7 @@ void App::drawSelectedPanel() {
         float w = 170;
         if (ui::button({px + pw - w - 14, by, w, bh}, "", ui::Style::Gold, S.shards >= sc)) {
             auto r = V::speedUp(S, b->id, tnow);
-            if (!r.ok) toast(r.reason, kBad); else { toast("Готово!", kGold); save(); }
+            if (!r.ok) toast(r.reason, kBad); else { audio::play("done"); toast("Готово!", kGold); save(); }
         }
         font::draw("Ускорить", px + pw - w - 14 + 16, by + 11, 16, 0xffffffffu);
         costLabel(lf::Res::Shards, sc, px + pw - 14 - 60, by + 11, 16);
@@ -334,7 +338,7 @@ void App::drawSelectedPanel() {
         float w = 220;
         if (ui::button({bx, by, w, bh}, "", up.ok ? ui::Style::Gold : ui::Style::Dark, up.ok)) {
             auto r = V::startUpgrade(S, b->id, tnow);
-            if (!r.ok) toast(r.reason, kBad); else { toast("Строители взялись за работу", kGold); save(); }
+            if (!r.ok) toast(r.reason, kBad); else { audio::play("upgrade"); toast("Строители взялись за работу", kGold); save(); }
         }
         font::draw("Улучшить", bx + 14, by + 11, 16, 0xffffffffu);
         if (up.cost > 0 || up.next) costLabel(up.res, up.cost, bx + w - 12, by + 11, 16, S.res(up.res) >= up.cost ? 0xffffffffu : kBad, 2);
@@ -347,6 +351,7 @@ void App::drawSelectedPanel() {
         float w = 130;
         if (ui::button({px + pw - w - 14, by, w, bh}, "", ui::Style::Green, a >= 1)) {
             long long got = V::collect(S, b->id, tnow);
+            if (got > 0) audio::play(d.produces == lf::Res::Ore ? "collect_ore" : "collect_aether");
             toast(got > 0 ? "+" + fmtNum(got) : "Хранилища полны", got > 0 ? kGold : kBad);
         }
         costLabel(d.produces, (long long)a, px + pw - w / 2 - 14, by + 11, 16, 0xffffffffu, 1);
@@ -383,7 +388,7 @@ bool App::modalFrame(const char* title, float w, float h, ui::Rect& body) {
     ui::panel({x, y, w, h});
     font::draw(title, x + 22, y + 12, 22, kGold);
     body = {x + 16, y + 50, w - 32, h - 62};
-    if (ui::button({x + w - 50, y + 10, 38, 34}, "×", ui::Style::Red, true, 17)) { modal = Modal::None; return false; }
+    if (ui::button({x + w - 50, y + 10, 38, 34}, "×", ui::Style::Red, true, 17)) { modal = Modal::None; audio::play("close", 0.6f); return false; }
     return true;
 }
 

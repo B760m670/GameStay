@@ -235,7 +235,7 @@ struct Projectile {
 enum class Fx { Boom, Blast, Hit, Poof, Flame, EclipseFx, Rift };
 struct Effect { Fx kind; float x, y, sx = 0, sy = 0, life, max, r = 0; bool air = false; uint32_t color = 0; };
 
-enum class Ev { LightsOut, Lantern, Wave, EclipseCast, Destroyed };
+enum class Ev { LightsOut, Lantern, Wave, EclipseCast, Destroyed, Shot, Hit, Deploy };
 struct BattleEvent { Ev kind; float x, y; BType type; };
 
 struct Wave { float t; std::map<TroopType, int> units; bool done = false; };

@@ -6,6 +6,7 @@
 #include <cstdio>
 
 #include "engine/atlas.h"
+#include "engine/audio.h"
 #include "engine/font.h"
 #include "engine/gfx.h"
 #include "platform/platform.h"
@@ -54,6 +55,7 @@ void App::init() {
 void App::save() { platform::writeFile(savePath(), lf::village::save(S)); }
 
 void App::toast(const std::string& s, uint32_t color) {
+    if (color == rgba(255, 140, 130)) audio::play("error", 0.5f);
     toasts.push_back({s, 2.6f, color});
     if (toasts.size() > 4) toasts.erase(toasts.begin());
 }
@@ -145,6 +147,7 @@ void App::frame(float dt, float width, float height) {
     drawToasts(dt);
     ui::endFrame();
     gfx::endFrame(rgba(13, 10, 28));
+    audio::update();
     saveT += dt;
     if (saveT > 5 && scene == Scene::Village) { saveT = 0; save(); }
 }
@@ -240,6 +243,7 @@ void App::finishBattle() {
     }
     save();
     modal = Modal::Result;
+    audio::play(bt.res.win ? "win" : "lose", 0.8f);
 }
 
 }  // namespace client

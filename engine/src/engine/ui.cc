@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "atlas.h"
+#include "audio.h"
 #include "font.h"
 #include "gfx.h"
 
@@ -70,6 +71,7 @@ void panel(const Rect& r, Style s) {
 
 bool button(const Rect& r, const std::string& text, Style s, bool enabled, float textSize) {
     bool clicked = tapped(r) && enabled;
+    if (clicked) audio::play("click", 0.6f);
     bool pressed = activeId >= 0 && r.contains(pressX, pressY) && r.contains(curX, curY);
     float dy = pressed ? 2.f : 0.f;
     uint32_t tint = enabled ? 0xffffffffu : gfx::rgba(150, 150, 160, 220);
@@ -81,6 +83,7 @@ bool button(const Rect& r, const std::string& text, Style s, bool enabled, float
 
 bool iconButton(const Rect& r, const std::string& ic, const std::string& text, Style s, bool highlight) {
     bool clicked = tapped(r);
+    if (clicked) audio::play("click", 0.6f);
     bool pressed = activeId >= 0 && r.contains(pressX, pressY) && r.contains(curX, curY);
     float dy = pressed ? 2.f : 0.f;
     atlas::draw9(atlas::get(styleSprite(s)), r.x, r.y + dy, r.w, r.h, 26, 13);

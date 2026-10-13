@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 
 ipa, version, build, url, out = sys.argv[1:6]
 repo = os.environ.get("GITHUB_REPOSITORY", "B760m670/GameStay")
-raw = f"https://raw.githubusercontent.com/{repo}/main/distribution"
+# иконка лежит рядом с .ipa в том же релизе
+raw = url.rsplit("/", 1)[0]
 
 source = {
     "name": "Lanternfall",
