@@ -17,11 +17,16 @@ void drawGround(const Camera& cam);
 // Утоптанная земля под постройкой.
 void drawDirt(const Camera& cam, float x, float y, float size);
 // Детали луга (трава, цветы, камешки) — под постройками.
-void drawMeadow(const Camera& cam);
-struct Decor { const char* sprite; float x, y; int size; float depth; };
+void drawMeadow(const Camera& cam, float t);
+// Блики на ручье и рябь на пруду (поверх тумана — лунный свет на воде).
+void drawWaterFx(const Camera& cam, float t);
+// Ручей вокруг поселения: середина русла (для обеих сторон) и расстояние до воды (< 0 — в воде).
+float streamCenter(float t);
+float waterDist(float x, float y);
+struct Decor { const char* sprite; float x, y; int size; float depth; int fx = 0; };  // fx: 1 — костёр, 2 — на воде
 // Лес и скалы за краем поля (сортируются вместе с постройками по глубине).
 const std::vector<Decor>& decor();
-void drawDecor(const Camera& cam, const Decor& d);
+void drawDecor(const Camera& cam, const Decor& d, float t);
 // Освещённость точки мира по последнему drawFog (0 — тьма, 1 — свет) и цвет base, затенённый по ней.
 float lightAt(float x, float y);
 uint32_t lightTint(float x, float y, uint32_t base);
@@ -36,9 +41,12 @@ struct BuildingLook {
     float hitFlash = 0;
     float collapse = -1;           // 0..1 — идёт обрушение разрушенной постройки
     float angle = 0.785f;          // куда смотрит поворотная часть (мировой угол), по умолчанию — к зрителю
+    float stunned = 0;             // > 0 — ослеплена Вспышкой
 };
 void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level, const BuildingLook& look, float t);
 void drawFootprint(const Camera& cam, float x, float y, float size, uint32_t color);
+// Сетка клеток вокруг точки (при перемещении постройки), гаснет к краю радиуса.
+void drawGridAround(const Camera& cam, float cx, float cy, float r);
 void drawBarAt(const Camera& cam, float wx, float wy, float z, float frac, uint32_t color, float width = 40);
 
 // deadT >= 0 — сколько секунд назад юнит погиб (анимация смерти, затем тело тает).

@@ -144,6 +144,9 @@ std::vector<TroopDef> makeTroops() {
     d.hp = 160; d.dmg = 18; d.cd = 0.6f; d.range = 0.7f; d.speed = 1.6f; d.target = Target::Light; d.lightMult = 3; d.stealth = true; d.color = hex(0x3a2a55); d.desc = ""; set(d);
     d = {}; d.type = TroopType::Wraith; d.id = "wraith"; d.name = "Призрак"; d.haze = true; d.housing = 4; d.unlock = 4;
     d.hp = 200; d.dmg = 18; d.cd = 1.0f; d.range = 2.2f; d.speed = 1.6f; d.air = true; d.ranged = Proj::Wisp; d.color = hex(0xa090c8); d.desc = ""; set(d);
+    d = {}; d.type = TroopType::Hero; d.id = "hero"; d.name = "Фонарщик"; d.housing = 0; d.unlock = 1;
+    d.hp = 900; d.dmg = 42; d.cd = 1.1f; d.range = 0.75f; d.speed = 1.35f; d.color = hex(0xffd36b);
+    d.desc = "Герой. Бьёт посохом с фонарём, а «Вспышкой» ослепляет оборону и подлечивает отряды."; set(d);
     return v;
 }
 

@@ -272,6 +272,35 @@ TEST(trap_triggers_and_not_counted) {
     CHECK(traps > 0, "");
 }
 
+TEST(hero_deploy_flash_and_upgrade) {
+    BattleOptions o;
+    o.layout = basegen::generate(2, 5);
+    o.heroLevel = 3;
+    Battle B(o);
+    CHECK(!B.heroAbility(), "not deployed yet");
+    CHECK(B.deployHero(1, 1), "");
+    CHECK(!B.deployHero(1.5f, 1), "only once");
+    CHECK(B.troops[B.heroIdx].maxHp > T(TroopType::Hero).hp * 1.15f, "level scales hp");
+    // подвести героя к обороне и ослепить её
+    int def = -1;
+    for (size_t i = 0; i < B.buildings.size(); i++) if (B.buildings[i].isDefense() && !B.buildings[i].isTrap()) def = (int)i;
+    CHECK(def >= 0, "");
+    B.troops[B.heroIdx].x = B.buildings[def].cx + 1;
+    B.troops[B.heroIdx].y = B.buildings[def].cy;
+    CHECK(B.heroAbility(), "");
+    CHECK(B.buildings[def].stunT > 0, "stunned");
+    CHECK(!B.heroAbility(), "once per battle");
+    // прокачка в деревне
+    auto S = village::create(0);
+    CHECK(!village::upgradeHero(S).ok, "locked at lantern 1");
+    S.buildings[0].level = 3;
+    S.aether = 1000000;
+    CHECK(village::heroMaxLevel(S) == 5, "max=%d", village::heroMaxLevel(S));
+    CHECK(village::upgradeHero(S).ok && S.heroLevel == 2, "");
+    VillageState L;
+    CHECK(village::load(village::save(S), L) && L.heroLevel == 2, "");
+}
+
 int main() {
     for (auto& [name, fn] : registry()) {
         int before = failures;

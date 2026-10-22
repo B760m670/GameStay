@@ -72,7 +72,7 @@ constexpr float kWallCost = 10.f;
 }
 
 Battle::Battle(const BattleOptions& o)
-    : mode(o.mode), duration(o.duration), rng(o.seed), eclipseChargesLeft(o.eclipseCharges), spells(o.spells), pool(o.army),
+    : mode(o.mode), duration(o.duration), rng(o.seed), eclipseChargesLeft(o.eclipseCharges), spells(o.spells), heroLevel(o.heroLevel), pool(o.army),
       tileOwner(kGrid * kGrid, -1), waves(o.waves), hazeMult(o.hazeMult), troopLevels(o.troopLevels) {
     for (size_t idx = 0; idx < o.layout.size(); idx++) {
         const auto& it = o.layout[idx];
@@ -157,6 +157,30 @@ bool Battle::deploy(TroopType type, float x, float y) {
     it->second--;
     used[type]++;
     lastDeployAt = time;
+    return true;
+}
+
+bool Battle::deployHero(float x, float y) {
+    if (ended || heroLevel <= 0 || heroIdx >= 0 || !canDeploy(x, y)) return false;
+    heroIdx = spawn(TroopType::Hero, x, y);
+    BTroop& h = troops[heroIdx];
+    h.hp = h.maxHp = h.maxHp * village::heroMult(heroLevel);
+    h.dmgMult *= village::heroMult(heroLevel);
+    events.push_back({Ev::Deploy, x, y, BType::Lantern});
+    lastDeployAt = time;
+    return true;
+}
+
+bool Battle::heroAbility() {
+    if (ended || heroIdx < 0 || heroAbilityUsed || troops[heroIdx].dead) return false;
+    heroAbilityUsed = true;
+    const BTroop& h = troops[heroIdx];
+    for (auto& b : buildings)
+        if (!b.dead && b.isDefense() && std::hypot(b.cx - h.x, b.cy - h.y) <= kHeroFlashRadius + b.size / 2.f) b.stunT = kHeroStun;
+    for (auto& t : troops)
+        if (!t.dead && !t.def->haze && std::hypot(t.x - h.x, t.y - h.y) <= kHeroFlashRadius) t.hp = std::min(t.maxHp, t.hp + t.maxHp * kHeroFlashHeal);
+    effects.push_back({Fx::Flash, h.x, h.y, 0, 0, 0.9f, 0.9f, kHeroFlashRadius});
+    events.push_back({Ev::HeroFlash, h.x, h.y, BType::Lantern});
     return true;
 }
 
@@ -365,6 +389,7 @@ bool Battle::canHit(const BBuilding& b, const BTroop& t) const {
 void Battle::updateDefense(int bi, float dt) {
     BBuilding& b = buildings[bi];
     if (b.cd > 0) b.cd -= dt;
+    if (b.stunT > 0) { b.stunT -= dt; b.target = -1; b.beamT = 0; return; }  // ослеплена Вспышкой
     if (!b.powered) { b.target = -1; b.beamT = 0; return; }
     if (b.target >= 0 && !canHit(b, troops[b.target])) { b.target = -1; b.beamT = 0; }
     if (b.target < 0) {

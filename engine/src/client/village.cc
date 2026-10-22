@@ -5,6 +5,7 @@
 #include "app.h"
 #include "engine/atlas.h"
 #include "engine/audio.h"
+#include "platform/platform.h"
 #include "engine/font.h"
 #include "engine/gfx.h"
 #include "world.h"
@@ -41,6 +42,7 @@ const char* kShopTabNames[4] = {"Оборона", "Свет и стены", "Э�
 }  // namespace
 
 void App::enterVillage() {
+    audio::music("village", 0.42f);
     scene = Scene::Village;
     modal = Modal::None;
     selected = -1;
@@ -216,6 +218,27 @@ void App::updateLife(float dt) {
             a.wait = 1.5f + rnd() * 4;
         }
     }
+    // Фонарщик прогуливается у Фонаря
+    bool on = V::heroUnlocked(S) && !S.buildings.empty();
+    if (on) {
+        Vec2 c = center(S.buildings[0]);
+        if (!heroOn) { heroA.x = heroA.tx = c.x + 2.8f; heroA.y = heroA.ty = c.y + 1.f; heroA.wait = 2; }
+        Actor& a = heroA;
+        a.anim += dt;
+        float dx = a.tx - a.x, dy = a.ty - a.y, d = std::hypot(dx, dy);
+        if (d > 0.05f) {
+            float step = std::min(d, 0.7f * dt);
+            a.x += dx / d * step;
+            a.y += dy / d * step;
+            a.angle = std::atan2(dy, dx);
+        } else if ((a.wait -= dt) <= 0) {
+            float ang = rnd() * 6.283f, r = 2.6f + rnd() * 1.2f;
+            a.tx = c.x + std::cos(ang) * r;
+            a.ty = c.y + std::sin(ang) * r;
+            a.wait = 2.f + rnd() * 4;
+        }
+    }
+    heroOn = on;
     // частицы
     emitT += dt;
     if (emitT > 0.08f) {
@@ -329,12 +352,18 @@ void App::drawVillageWorld() {
     if (placing.active && placing.moveId >= 0)
         for (auto& b : view.buildings) if (b.id == placing.moveId) { b.x = placing.x; b.y = placing.y; }
     for (const auto& b : view.buildings) if (b.type != lf::BType::Wall && b.type != lf::BType::Trap) world::drawDirt(cam, (float)b.x, (float)b.y, (float)b.def().size);
-    world::drawMeadow(cam);
-    world::drawFog(cam, V::sources(view), {}, t);
+    world::drawMeadow(cam, t);
+    world::drawFog(cam, V::sources(view), {}, t, 0.56f);
+    world::drawWaterFx(cam, t);
+    if (placing.active) {
+        float s = (float)lf::B(placing.type).size;
+        world::drawGridAround(cam, placing.x + s / 2, placing.y + s / 2, 7.f);
+    }
     struct Item { float depth; const lf::BuildingRec* b; bool ghost; const world::Decor* d = nullptr; int actor = -1; };
     std::vector<Item> items;
     for (size_t i = 0; i < workers.size(); i++) items.push_back({workers[i].x + workers[i].y, nullptr, false, nullptr, (int)i});
     for (size_t i = 0; i < idlers.size(); i++) items.push_back({idlers[i].x + idlers[i].y, nullptr, false, nullptr, 1000 + (int)i});
+    if (heroOn) items.push_back({heroA.x + heroA.y, nullptr, false, nullptr, 2000});
     for (const auto& b : view.buildings) items.push_back({(float)(b.x + b.y + b.def().size), &b, false});
     for (const auto& d : world::decor()) items.push_back({d.depth, nullptr, false, &d});
     lf::BuildingRec ghost;
@@ -348,9 +377,9 @@ void App::drawVillageWorld() {
     std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) { return a.depth < b.depth; });
     long long tnow = now();
     for (const auto& it : items) {
-        if (it.d) { world::drawDecor(cam, *it.d); continue; }
+        if (it.d) { world::drawDecor(cam, *it.d, t); continue; }
         if (it.actor >= 0) {
-            const Actor& a = it.actor >= 1000 ? idlers[it.actor - 1000] : workers[it.actor];
+            const Actor& a = it.actor == 2000 ? heroA : it.actor >= 1000 ? idlers[it.actor - 1000] : workers[it.actor];
             bool still = !a.working && std::hypot(a.tx - a.x, a.ty - a.y) <= 0.05f;
             int frame = a.working ? (int)(a.anim * 9) % 6 : still ? (int)(a.anim * 4) % 4 : (int)(a.anim * 12) % 8;
             std::string anim = a.working ? "attack" : still ? "idle" : "move";
@@ -762,8 +791,29 @@ void App::drawArmy() {
         if (ui::tapped(r)) V::cancelTrain(S, (int)i);
         qx += 50;
     }
-    // карточки
-    float cw = (body.w - 5 * 8) / 6, ch = body.h - 80, cx = body.x, cy = body.y + 76;
+    // карточки: герой и отряды
+    float cw = (body.w - 6 * 8) / 7, ch = body.h - 80, cx = body.x, cy = body.y + 76;
+    {
+        bool open = V::heroUnlocked(S);
+        int maxL = V::heroMaxLevel(S);
+        ui::Rect r{cx, cy, cw, ch};
+        atlas::draw9(atlas::get(open ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 24, 12, open ? rgba(255, 236, 190) : 0xffffffffu);
+        world::drawTroopThumb(lf::TroopType::Hero, cx + cw / 2, cy + ch * 0.32f, ch * 0.55f);
+        font::draw("Фонарщик", cx + cw / 2, cy + ch * 0.58f, 15, kInk, font::Center, false);
+        font::draw(open ? "Герой · ур. " + std::to_string(S.heroLevel) : "Герой", cx + cw / 2, cy + ch * 0.58f + 20, 11, kInkSoft, font::Center, false);
+        if (!open) font::draw("Фонарь ур. " + std::to_string(lf::kHeroUnlockLantern), cx + cw / 2, cy + ch - 26, 13, rgba(180, 40, 30), font::Center, false);
+        else if (S.heroLevel >= maxL) font::draw(S.heroLevel >= lf::kHeroMaxLevel ? "Максимум" : "Улучши Фонарь", cx + cw / 2, cy + ch - 26, 13, kInkSoft, font::Center, false);
+        else {
+            int cost = V::heroUpgradeCost(S.heroLevel + 1);
+            costLabel(lf::Res::Aether, cost, cx + cw / 2, cy + ch - 26, 15, S.aether >= cost ? kInk : rgba(200, 50, 40), 1);
+        }
+        if (ui::tapped(r)) {
+            auto res = V::upgradeHero(S);
+            if (res.ok) { toast("Фонарщик: уровень " + std::to_string(S.heroLevel) + "!", kGold); audio::play("upgrade", 0.9f); save(); }
+            else toast(res.reason, kBad);
+        }
+        cx += cw + 8;
+    }
     for (int i = 0; i < lf::kPlayerTroops; i++) {
         auto type = (lf::TroopType)i;
         const auto& d = lf::T(type);
@@ -899,7 +949,11 @@ void App::drawMenu() {
     float y = body.y;
     font::draw("Атак: " + std::to_string(S.stats.attacks) + ", побед: " + std::to_string(S.stats.wins), body.x + 4, y, 16, kInk, font::Left, false);
     font::draw("Ночей пережито: " + std::to_string(S.stats.nightsWon) + ", проиграно: " + std::to_string(S.stats.nightsLost), body.x + 4, y + 24, 16, kInk, font::Left, false);
-    font::draw("Lanternfall 0.2 · свой движок на C++", body.x + 4, y + 52, 13, kInkSoft, font::Left, false);
+    font::draw("Lanternfall 0.3 · свой движок на C++", body.x + 4, y + 52, 13, kInkSoft, font::Left, false);
+    if (ui::button({body.x + body.w - 170, y, 170, 44}, audio::muted() ? "Звук: выкл" : "Звук: вкл", audio::muted() ? ui::Style::Dark : ui::Style::Green, true, 16)) {
+        audio::setMuted(!audio::muted());
+        platform::writeFile(platform::saveDir() + "/settings.txt", audio::muted() ? "mute 1\n" : "mute 0\n");
+    }
     if (ui::button({body.x, body.y + body.h - 112, body.w, 50}, "Режим разработчика: ресурсы и стройка", ui::Style::Normal, true, 16)) {
         V::addRes(S, lf::Res::Ore, 1000000000);
         V::addRes(S, lf::Res::Aether, 1000000000);

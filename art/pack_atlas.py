@@ -418,7 +418,19 @@ def rage(d, s, im):
     d.polygon([(S * .5, S * .48), (S * .6, S * .66), (S * .54, S * .78), (S * .46, S * .78), (S * .4, S * .66)], fill=(255, 245, 200, 255))
 
 
-for n, f in [("heal", heal), ("rage", rage), ("ore", ore), ("aether", aether), ("shard", shard), ("star", star), ("builder", hammer), ("army", sword),
+def flash(d, s, im):
+    S = 128 * s
+    d.ellipse((S * .08, S * .08, S * .92, S * .92), fill=(30, 18, 40, 255))
+    d.ellipse((S * .15, S * .15, S * .85, S * .85), fill=(255, 196, 70, 255))
+    pts = []
+    for i in range(16):
+        a = i * math.pi / 8
+        r = S * (0.33 if i % 2 == 0 else 0.15)
+        pts.append((S / 2 + math.cos(a) * r, S / 2 + math.sin(a) * r))
+    outlined_poly(d, pts, (255, 252, 225), s)
+
+
+for n, f in [("flash", flash), ("heal", heal), ("rage", rage), ("ore", ore), ("aether", aether), ("shard", shard), ("star", star), ("builder", hammer), ("army", sword),
              ("build", house), ("codex", scroll), ("night", moon), ("map", mapi), ("menu", gear), ("upgrade", up),
              ("clock", clock), ("close", close), ("eclipse", eclipse), ("flag", flag), ("lantern", lantern)]:
     icon(n, f)

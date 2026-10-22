@@ -354,6 +354,22 @@ Result startResearch(VillageState& S, TroopType t, long long now) {
     return Result::yes();
 }
 
+bool heroUnlocked(const VillageState& S) { return lanternLevel(S) >= kHeroUnlockLantern; }
+int heroMaxLevel(const VillageState& S) { return heroUnlocked(S) ? std::min(kHeroMaxLevel, lanternLevel(S) * 2 - 1) : 0; }
+int heroUpgradeCost(int toLevel) { return 1500 * (toLevel - 1) * (toLevel - 1) + 1000 * (toLevel - 1); }
+float heroMult(int level) { return 1.f + 0.1f * (std::max(1, level) - 1); }
+
+Result upgradeHero(VillageState& S) {
+    if (!heroUnlocked(S)) return Result::no("Герой откроется на Фонаре " + std::to_string(kHeroUnlockLantern));
+    int next = S.heroLevel + 1;
+    if (next > heroMaxLevel(S)) return Result::no(S.heroLevel >= kHeroMaxLevel ? "Максимальный уровень" : "Улучши Фонарь");
+    if (S.aether < heroUpgradeCost(next)) return Result::no("Не хватает Эфира");
+    S.aether -= heroUpgradeCost(next);
+    S.heroLevel = next;
+    addXp(S, 10 + next * 3);
+    return Result::yes();
+}
+
 namespace {
 const League kLeagues[] = {
     {"Медь", 0, 0.00f, 0xff5a8ad0u}, {"Бронза", 100, 0.05f, 0xff3a7ac8u}, {"Серебро", 300, 0.10f, 0xffd8d0c8u},
@@ -489,6 +505,7 @@ std::string save(const VillageState& S) {
     o << "started " << (S.started ? 1 : 0) << "\n";
     o << "xp " << S.level << " " << S.xp << "\n";
     o << "rating " << S.rating << "\n";
+    o << "hero " << S.heroLevel << "\n";
     o << "troops";
     for (int n : S.troopLevel) o << " " << n;
     o << " " << S.researchType << " " << S.researchUntil << "\n";
@@ -526,6 +543,7 @@ bool load(const std::string& text, VillageState& out) {
         else if (k == "stats") l >> S.stats.attacks >> S.stats.wins >> S.stats.nightsWon >> S.stats.nightsLost;
         else if (k == "started") { int v; l >> v; S.started = v != 0; }
         else if (k == "xp") l >> S.level >> S.xp;
+        else if (k == "hero") l >> S.heroLevel;
         else if (k == "rating") l >> S.rating;
         else if (k == "troops") { for (auto& n : S.troopLevel) l >> n; l >> S.researchType >> S.researchUntil; }
         else if (k == "stats2") l >> S.stats.built >> S.stats.upgrades >> S.stats.oreCollected >> S.stats.aetherCollected >> S.stats.beaconsDestroyed >> S.stats.stars >> S.stats.trained;

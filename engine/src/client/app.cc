@@ -40,6 +40,10 @@ static std::string savePath() { return platform::saveDir() + "/lanternfall.sav";
 
 void App::init() {
     splash = gfx::loadTexture(platform::assetDir() + "/art/splash.jpg", true);
+    std::vector<unsigned char> settings;
+    if (platform::readFile(platform::saveDir() + "/settings.txt", settings) && std::string(settings.begin(), settings.end()).find("mute 1") != std::string::npos)
+        audio::setMuted(true);
+    audio::music("village", 0.42f);
     std::vector<unsigned char> data;
     bool loaded = false;
     if (platform::readFile(savePath(), data)) loaded = lf::village::load(std::string(data.begin(), data.end()), S);
@@ -279,6 +283,7 @@ void App::startMission(int idx) {
     o.troopLevels = levelMap(S);
     o.eclipseCharges = lf::eclipseCharges(lf::village::lanternLevel(S));
     o.spells = lf::village::spellCharges(S.level);
+    o.heroLevel = lf::village::heroUnlocked(S) ? S.heroLevel : 0;
     o.seed = ms.seed;
     enterBattle(std::make_unique<lf::Battle>(o), BattleKind::Mission, ms.title, idx);
 }
@@ -294,6 +299,7 @@ void App::startRaid() {
     o.troopLevels = levelMap(S);
     o.eclipseCharges = lf::eclipseCharges(LL);
     o.spells = lf::village::spellCharges(S.level);
+    o.heroLevel = lf::village::heroUnlocked(S) ? S.heroLevel : 0;
     o.seed = seed;
     std::string name = lf::basegen::rivalName(rng) + " · Фонарь " + std::to_string(eLL);
     enterBattle(std::make_unique<lf::Battle>(o), BattleKind::Raid, name);

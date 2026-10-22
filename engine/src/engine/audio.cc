@@ -25,11 +25,16 @@ bool ready = false, isMuted = false;
 int outRate = 44100;
 std::string dir;
 
-const Clip* load(const std::string& name) {
-    auto it = clips.find(name);
+// Музыка: одна дорожка играет по кругу, предыдущая плавно затухает.
+struct Track { const Clip* clip = nullptr; double pos = 0; float vol = 0, target = 0; };
+Track cur, prev;
+std::string curName;
+
+const Clip* loadPath(const std::string& key, const std::string& path) {
+    auto it = clips.find(key);
     if (it != clips.end()) return &it->second;
     std::vector<unsigned char> data;
-    if (!platform::readFile(dir + "/" + name + ".ogg", data)) return nullptr;
+    if (!platform::readFile(path, data)) return nullptr;
     int ch = 0, rate = 0;
     short* pcm = nullptr;
     int n = stb_vorbis_decode_memory(data.data(), (int)data.size(), &ch, &rate, &pcm);
@@ -43,9 +48,36 @@ const Clip* load(const std::string& name) {
         c.samples[i] = s / ch;  // в моно
     }
     free(pcm);
-    return &(clips[name] = std::move(c));
+    return &(clips[key] = std::move(c));
+}
+
+const Clip* load(const std::string& name) { return loadPath(name, dir + "/" + name + ".ogg"); }
+
+void mixTrack(Track& tr, int frames) {
+    if (!tr.clip || tr.clip->samples.size() < 2) return;
+    const auto& s = tr.clip->samples;
+    double step = (double)tr.clip->rate / outRate;
+    float fade = 1.f / (1.5f * outRate);  // полторы секунды на смену громкости
+    for (int i = 0; i < frames; i++) {
+        tr.vol += std::clamp(tr.target - tr.vol, -fade, fade);
+        size_t p = (size_t)tr.pos;
+        size_t q = (p + 1) % s.size();
+        float f = (float)(tr.pos - p);
+        mixBuf[i] += (s[p] * (1 - f) + s[q] * f) * tr.vol;
+        tr.pos += step;
+        if (tr.pos >= s.size()) tr.pos -= s.size();
+    }
 }
 }  // namespace
+
+void music(const std::string& name, float volume) {
+    if (!ready) return;
+    if (name == curName && cur.clip) { cur.target = volume; return; }
+    prev = cur;
+    prev.target = 0;
+    cur = Track{loadPath("music/" + name, dir + "/../music/" + name + ".ogg"), 0, 0, volume};
+    curName = name;
+}
 
 bool init(const std::string& sfxDir) {
     dir = sfxDir;
@@ -85,6 +117,10 @@ void update() {
     int frames = saudio_expect();
     if (frames <= 0) return;
     mixBuf.assign(frames, 0.f);
+    if (!isMuted) {
+        mixTrack(cur, frames);
+        mixTrack(prev, frames);
+    }
     for (auto& v : voices) {
         const auto& s = v.clip->samples;
         for (int i = 0; i < frames; i++) {

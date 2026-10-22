@@ -25,10 +25,16 @@ constexpr float kSpellRadius = 3.f;
 constexpr float kSpellDuration = 8.f;
 constexpr float kHealPerSec = 0.12f;  // доля здоровья в секунду
 constexpr float kRageMult = 1.6f;     // скорость и темп атак
+// Герой (Фонарщик): один на бой, способность «Вспышка Фонаря» — ослепляет оборону и подлечивает отряды вокруг.
+constexpr int kHeroUnlockLantern = 2;
+constexpr int kHeroMaxLevel = 10;
+constexpr float kHeroFlashRadius = 5.f;
+constexpr float kHeroStun = 5.f;
+constexpr float kHeroFlashHeal = 0.35f;
 
 enum class BType { Lantern, Beacon, OreMine, AetherWell, OreStore, AetherStore, Barracks, Camp, BuilderHut, Ballista, Brazier, Catapult, Prism, Wall, Workshop, Trap, Count };
 enum class Res { Ore, Aether, Shards, None };
-enum class TroopType { Torch, Archer, Shield, Sapper, Shade, Owl, Morok, Brute, Leech, Wraith, Count };
+enum class TroopType { Torch, Archer, Shield, Sapper, Shade, Owl, Morok, Brute, Leech, Wraith, Hero, Count };
 enum class Target { Any, Defense, Light, Wall };
 enum class Proj { None, Bolt, Flame, Rock, Arrow, Feather, Wisp };
 enum class Category { Core, Light, Economy, Army, Defense, Wall };
@@ -155,6 +161,7 @@ struct VillageState {
     std::map<std::string, int> tasks;  // id -> сколько ступеней уже забрано
     int rating = 0;        // рейтинг набегов
     std::array<int, kPlayerTroops> troopLevel{1, 1, 1, 1, 1, 1};
+    int heroLevel = 1;
     int researchType = -1;  // какой отряд сейчас улучшается в Кузнице
     long long researchUntil = 0;
     long long xp = 0;      // опыт внутри текущего уровня
@@ -234,6 +241,12 @@ int researchCost(TroopType t, int toLevel);
 int researchTime(TroopType t, int toLevel);
 Result canResearch(const VillageState& S, TroopType t, long long now);
 Result startResearch(VillageState& S, TroopType t, long long now);
+// Герой.
+bool heroUnlocked(const VillageState& S);
+int heroMaxLevel(const VillageState& S);  // ограничен уровнем Фонаря
+int heroUpgradeCost(int toLevel);         // Эфир
+float heroMult(int level);
+Result upgradeHero(VillageState& S);
 // Рейтинг и лиги.
 struct League { const char* name; int minRating; float lootBonus; uint32_t color; };
 const League& league(int rating);
@@ -260,7 +273,7 @@ struct BBuilding {
     BType type;
     int x, y, level, size;
     const BuildingDef* def;
-    float hp, maxHp, cx, cy, lightR, cd = 0, beamT = 0, hitT = 0, angle = 2.35f;
+    float hp, maxHp, cx, cy, lightR, cd = 0, beamT = 0, hitT = 0, angle = 2.35f, stunT = 0;
     float lootOre = 0, lootAether = 0;
     bool dead = false, powered = true;
     int target = -1;  // индекс войска
@@ -291,10 +304,10 @@ struct Projectile {
     bool fromAir = false, done = false;
 };
 
-enum class Fx { Boom, Blast, Hit, Poof, Flame, EclipseFx, Rift };
+enum class Fx { Boom, Blast, Hit, Poof, Flame, EclipseFx, Rift, Flash };
 struct Effect { Fx kind; float x, y, sx = 0, sy = 0, life, max, r = 0; bool air = false; uint32_t color = 0; };
 
-enum class Ev { LightsOut, Lantern, Wave, EclipseCast, Destroyed, Shot, Hit, Deploy, SpellCast, Trap };
+enum class Ev { LightsOut, Lantern, Wave, EclipseCast, Destroyed, Shot, Hit, Deploy, SpellCast, Trap, HeroFlash };
 struct BattleEvent { Ev kind; float x, y; BType type; };
 
 struct Wave { float t; std::map<TroopType, int> units; bool done = false; };
@@ -313,6 +326,7 @@ struct BattleOptions {
     std::map<TroopType, int> troopLevels;  // уровни отрядов атакующего (1 по умолчанию)
     int eclipseCharges = 0;
     std::map<Spell, int> spells;  // заряды заклинаний атакующего
+    int heroLevel = 0;            // 0 — героя нет
     int seed = 1;
     float duration = kBattleTime;
     std::vector<Wave> waves;
@@ -327,6 +341,8 @@ public:
     bool deploy(TroopType t, float x, float y);
     bool castEclipse(float x, float y);
     bool castSpell(Spell s, float x, float y);
+    bool deployHero(float x, float y);
+    bool heroAbility();
     void finish();
     BattleResult simulate(float maxTime = 400.f, float dt = 1.f / 30.f);
     bool litAt(float x, float y) const;
@@ -345,6 +361,8 @@ public:
     std::vector<Eclipse> eclipses;
     std::vector<SpellZone> zones;
     std::map<Spell, int> spells;
+    int heroLevel = 0, heroIdx = -1;  // индекс героя в troops после высадки
+    bool heroAbilityUsed = false;
     std::vector<BattleEvent> events;
     int eclipseChargesLeft;
     std::map<TroopType, int> pool, used;

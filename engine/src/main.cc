@@ -27,6 +27,7 @@ struct Opts {
     std::string scene = "village", modal, select;
     bool deploy = false, keepDialogue = false;
     int w = 1280, h = 720;
+    float view = 0;
 } opt;
 
 void init() {
@@ -39,6 +40,7 @@ void init() {
     app.init();
     if (!opt.keepDialogue && opt.shot) app.skipDialogue();
     if (opt.shot && opt.scene != "title") app.title = false;
+    if (opt.view > 0) app.viewRadius(opt.view);
     if (opt.scene == "mission") app.startMission(0);
     else if (opt.scene == "raid") app.startRaid();
     else if (opt.scene == "night") app.startNight();
@@ -92,6 +94,7 @@ sapp_desc sokol_main(int argc, char* argv[]) {
         else if (a == "--deploy") opt.deploy = true;
         else if (a == "--select") opt.select = next();
         else if (a == "--dialogue") opt.keepDialogue = true;
+        else if (a == "--view") opt.view = (float)std::atof(next());
         else if (a == "--size") { std::string s = next(); opt.w = std::atoi(s.c_str()); opt.h = std::atoi(s.substr(s.find('x') + 1).c_str()); }
     }
     sapp_desc d = {};

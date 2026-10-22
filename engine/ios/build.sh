@@ -40,7 +40,7 @@ xcrun strip -x "$APP/Lanternfall" || true
 
 # ресурсы
 mkdir -p "$APP/assets"
-cp -R "$ROOT/assets/atlas" "$ROOT/assets/fonts" "$ROOT/assets/sfx" "$ROOT/assets/art" "$APP/assets/"
+cp -R "$ROOT/assets/atlas" "$ROOT/assets/fonts" "$ROOT/assets/sfx" "$ROOT/assets/art" "$ROOT/assets/music" "$APP/assets/"
 rm -f "$APP/assets/sfx/"*.txt
 rm -f "$APP/assets/fonts/"*.txt
 sed -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$BUILD/" "$HERE/Info.plist.in" > "$APP/Info.plist"

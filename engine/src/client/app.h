@@ -70,6 +70,7 @@ public:
     void startRaid();
     void startNight();
     void skipDialogue() { dlg.clear(); }
+    void viewRadius(float r) { requestFocus(22, 22, r, 2.f); }
     void autoDeploy();
     void selectType(const std::string& id) {
         for (auto& b : S.buildings) if (std::string(lf::B(b.type).id) == id) { selected = b.id; return; }
@@ -106,6 +107,8 @@ private:
     // жизнь деревни
     struct Actor { std::string unit; float x, y, tx, ty, angle = 0, wait = 0, anim = 0; int job = -1; bool working = false; };
     std::vector<Actor> workers, idlers;
+    Actor heroA{"hero", 0, 0, 0, 0};
+    bool heroOn = false;
     std::vector<world::Particle> particles;
     float emitT = 0;
     void updateLife(float dt);

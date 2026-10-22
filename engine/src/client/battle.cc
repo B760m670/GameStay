@@ -14,7 +14,7 @@ using gfx::rgba;
 
 namespace {
 const uint32_t kGold = rgba(255, 216, 107), kMuted = rgba(190, 178, 215), kBad = rgba(255, 140, 130), kGood = rgba(160, 240, 140);
-constexpr int kEclipseSel = 100, kHealSel = 101, kRageSel = 102;
+constexpr int kEclipseSel = 100, kHealSel = 101, kRageSel = 102, kHeroSel = 103;
 bool isSpellSel(int sel) { return sel >= kEclipseSel; }
 constexpr float kDT = 1.f / 30.f;
 
@@ -55,6 +55,7 @@ void debris(std::vector<world::Particle>& ps, float x, float y, float size, int 
 
 void App::enterBattle(std::unique_ptr<lf::Battle> b, BattleKind kind, const std::string& title, int missionIdx) {
     bt = BattleState{};
+    audio::music("battle", 0.38f);
     bt.b = std::move(b);
     bt.kind = kind;
     bt.title = title;
@@ -91,6 +92,16 @@ bool App::tryBattleAction(Vec2 w) {
         bt.started = true;
         toast("Затмение! Свет погас", kGood);
         return true;
+    }
+    if (bt.sel == kHeroSel) {
+        if (B.heroIdx >= 0) return false;
+        if (B.deployHero(w.x, w.y)) {
+            bt.started = true;
+            toast("Фонарщик в бою! Нажми на его карточку — Вспышка", kGold);
+            return true;
+        }
+        if (bt.warnT <= 0) { toast("Высадка только во тьме и не на постройках", kBad); bt.warnT = 1.5f; }
+        return false;
     }
     if (bt.sel == kHealSel || bt.sel == kRageSel) {
         if (w.x < 0 || w.y < 0 || w.x > lf::kGrid || w.y > lf::kGrid) return false;
@@ -146,6 +157,7 @@ void App::battleFrame(float dt, const std::vector<input::Event>& worldEvents) {
             case lf::Ev::LightsOut: audio::play("eclipse", 0.7f, 0.8f); break;
             case lf::Ev::SpellCast: audio::play("upgrade", 0.8f, 0.8f); break;
             case lf::Ev::Trap: audio::play("boom", 0.9f, 1.2f); break;
+            case lf::Ev::HeroFlash: audio::play("eclipse", 1.0f, 1.4f); break;
         }
         switch (ev.kind) {
             case lf::Ev::Deploy: dust(bt.parts, ev.x, ev.y, 6, 0.9f, rgba(150, 125, 90, 170)); break;
@@ -160,6 +172,11 @@ void App::battleFrame(float dt, const std::vector<input::Event>& worldEvents) {
                 }
                 break;
             }
+            case lf::Ev::HeroFlash:
+                bt.shake = std::min(1.f, bt.shake + 0.3f);
+                for (int i = 0; i < 30; i++)
+                    bt.parts.push_back({ev.x, ev.y, 30, (frand() - 0.5f) * 8, (frand() - 0.5f) * 8, 40 + frand() * 120, 0.7f + frand() * 0.5f, 1.2f, 7, rgba(255, 230, 140, 240), true});
+                break;
             case lf::Ev::Trap:
                 bt.shake = std::min(1.f, bt.shake + 0.35f);
                 dust(bt.parts, ev.x, ev.y, 10, 2.2f, rgba(90, 70, 60, 200));
@@ -210,9 +227,10 @@ void App::drawBattleWorld() {
     }
     world::drawGround(cam);
     for (const auto& b : B.buildings) if (b.isStructure()) world::drawDirt(cam, (float)b.x, (float)b.y, (float)b.size);
-    world::drawMeadow(cam);
+    world::drawMeadow(cam, t);
     bool tint = bt.kind != BattleKind::Night && bt.sel >= 0 && !isSpellSel(bt.sel) && !B.ended;
-    world::drawFog(cam, B.sources, B.eclipses, t, 0.76f, tint);
+    world::drawFog(cam, B.sources, B.eclipses, t, 0.72f, tint);
+    world::drawWaterFx(cam, t);
     for (const auto& z : B.zones) world::drawSpellZone(cam, z, B.time, t);
     for (auto& f : bt.flashes) world::drawFootprint(cam, (float)(f.first % lf::kGrid), (float)(f.first / lf::kGrid), 1, rgba(255, 60, 60, (int)(f.second * 400)));
     struct Item { float depth; int kind, idx; };
@@ -232,7 +250,7 @@ void App::drawBattleWorld() {
     }
     std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) { return a.depth < b.depth; });
     for (const auto& it : items) {
-        if (it.kind == 2) { world::drawDecor(cam, dec[it.idx]); continue; }
+        if (it.kind == 2) { world::drawDecor(cam, dec[it.idx], t); continue; }
         if (it.kind == 0) {
             const auto& b = B.buildings[it.idx];
             world::BuildingLook look;
@@ -241,6 +259,7 @@ void App::drawBattleWorld() {
             look.dim = look.unpowered ? 0.55f : 1.f;
             look.hitFlash = b.hitT;
             look.angle = b.angle;
+            look.stunned = b.stunT;
             if (b.dead && it.idx < (int)bt.bDeadT.size()) look.collapse = std::min(1.f, bt.bDeadT[it.idx] / 0.7f);
             world::drawBuilding(cam, b.type, (float)b.x, (float)b.y, b.level, look, t);
         } else {
@@ -304,6 +323,7 @@ void App::drawBattleHud() {
         const char* hint = bt.sel == kEclipseSel ? "Нажми на базу — свет погаснет"
                            : bt.sel == kHealSel ? "Нажми на карту — отряды в круге лечатся"
                            : bt.sel == kRageSel ? "Нажми на карту — отряды в круге звереют"
+                           : bt.sel == kHeroSel && B.heroIdx < 0 ? "Нажми во тьме — высадить Фонарщика"
                                                 : "Высаживай войска во тьме";
         font::draw(hint, cam.w - safeX, y + 48, 14, kMuted, font::Right);
     }
@@ -314,6 +334,7 @@ void App::drawBattleHud() {
         for (const auto& [type, n] : B.pool) if (n > 0 || B.used.count(type)) cards.push_back({(int)type, n});
         if (B.eclipseChargesLeft > 0 || bt.sel == kEclipseSel) cards.push_back({kEclipseSel, B.eclipseChargesLeft});
         for (auto [sp, n] : B.spells) cards.push_back({sp == lf::Spell::Heal ? kHealSel : kRageSel, n});
+        if (B.heroLevel > 0) cards.insert(cards.begin(), {kHeroSel, B.heroIdx < 0 || !B.heroAbilityUsed ? 1 : 0});
     }
     float total = cards.size() * (bw + gap) + 2 * (64 + gap);
     float bx = cam.w / 2 - total / 2, by = cam.h - bh - safeB;
@@ -323,12 +344,21 @@ void App::drawBattleHud() {
         ui::panel(r, sel ? ui::Style::Normal : ui::Style::Dark);
         if (sel) atlas::draw9(atlas::get("ui/glow_frame"), r.x - 6, r.y - 6, r.w + 12, r.h + 12, 30, 18, rgba(255, 220, 120, 230));
         if (id == kEclipseSel) ui::icon("icon/eclipse", bx + bw / 2, by + 30, 40);
+        else if (id == kHeroSel && B.heroIdx >= 0) {
+            bool alive = !B.troops[B.heroIdx].dead;
+            ui::icon("icon/flash", bx + bw / 2, by + 30, 44, alive && !B.heroAbilityUsed ? 0xffffffffu : rgba(120, 110, 130, 200));
+            if (alive && !B.heroAbilityUsed) atlas::draw9(atlas::get("ui/glow_frame"), r.x - 6, r.y - 6, r.w + 12, r.h + 12, 30, 18, rgba(255, 220, 120, (int)(150 + 100 * std::sin(t * 6))));
+        } else if (id == kHeroSel) world::drawTroopThumb(lf::TroopType::Hero, bx + bw / 2, by + 30, 56);
         else if (id == kHealSel) ui::icon("icon/heal", bx + bw / 2, by + 30, 42);
         else if (id == kRageSel) ui::icon("icon/rage", bx + bw / 2, by + 30, 42);
         else world::drawTroopThumb((lf::TroopType)id, bx + bw / 2, by + 30, 52);
-        font::draw("x" + std::to_string(n), bx + bw / 2, by + bh - 24, 16, n > 0 ? 0xffffffffu : kMuted, font::Center);
+        std::string label = id == kHeroSel ? (B.heroIdx < 0 ? "ур. " + std::to_string(B.heroLevel) : "Вспышка") : "x" + std::to_string(n);
+        font::draw(label, bx + bw / 2, by + bh - 24, id == kHeroSel ? 14 : 16, n > 0 ? 0xffffffffu : kMuted, font::Center);
         if (n <= 0) gfx::fillRect(bx + 3, by + 3, bw - 6, bh - 6, rgba(10, 6, 20, 120));
-        if (ui::tapped(r)) bt.sel = id;
+        if (ui::tapped(r)) {
+            if (id == kHeroSel && B.heroIdx >= 0) B.heroAbility();
+            else bt.sel = id;
+        }
         bx += bw + gap;
     }
     if (ui::iconButton({bx, by + 6, 64, bh - 6}, "icon/clock", "x" + std::to_string(bt.speed))) bt.speed = bt.speed == 1 ? 2 : bt.speed == 2 ? 4 : 1;

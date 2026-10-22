@@ -329,6 +329,22 @@ def make_item(kind, assets, color=None):
         lo.location = (0, 0, 0.3)
         bpy.context.scene.collection.objects.link(lo)
         parts.append(lo)
+    elif kind == "lanternstaff":
+        parts.append(_prim("cylinder", pbr("Staff", WOOD), (0, 0, 0.12), (0.009, 0.009, 0.2), vertices=8))
+        parts.append(_prim("cube", pbr("Hook", (0.25, 0.22, 0.2), 0.7, 0.4), (0, 0, 0.31), (0.035, 0.006, 0.006)))
+        new = import_part(os.path.join(assets, recipes.KITS["grave"], "lantern-candle.glb"), (0, 0, 0), 0, 0.38)
+        tint_all(new, (0.42, 0.34, 0.26))
+        for o in new:
+            if o.parent is None:
+                o.location = (0.03, 0, 0.17)
+        parts += [o for o in new if o.parent is None]
+        parts.append(_prim("uv_sphere", pbr("Flame", (1.0, 0.6, 0.18), 0, 0.3, emit=4), (0.03, 0, 0.235), (0.02, 0.02, 0.03), segments=8, ring_count=6))
+        ld = bpy.data.lights.new("HeroLight", "POINT")
+        ld.energy, ld.color, ld.shadow_soft_size = 8, (1.0, 0.65, 0.3), 0.02
+        lo = bpy.data.objects.new("HeroLight", ld)
+        lo.location = (0.03, 0, 0.235)
+        bpy.context.scene.collection.objects.link(lo)
+        parts.append(lo)
     elif kind == "lantern":
         new = import_part(os.path.join(assets, recipes.KITS["grave"], "lantern-candle.glb"), (0, 0, 0), 0, 0.42)
         for o in new:

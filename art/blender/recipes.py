@@ -206,8 +206,20 @@ DECOR.update({
     "pebble": ("rock_smallFlatA", 1, 0.35), "pebble2": ("rock_smallB", 1, 0.3), "shroom": ("mushroom_tanGroup", 1, 0.35),
     "bush_small": ("plant_bushSmall", 1, 0.5),
 })
-for _k, (_m, _s, _f) in DECOR.items():
-    BUILDINGS[f"decor_{_k}"] = {"size": _s, "fill": _f, "parts": [P("nature", _m)]}
+# Обустройство окрестностей: мосты, кувшинки, поле, стоянка, руины (4-й элемент — поворот модели).
+DECOR.update({
+    "bridge_a": ("bridge_wood", 2, 0.95, 0), "bridge_b": ("bridge_wood", 2, 0.95, 90),
+    "lily": ("lily_large", 1, 0.55), "lily_small": ("lily_small", 1, 0.4),
+    "wheat": ("crops_wheatStageB", 1, 0.95), "corn": ("crops_cornStageD", 1, 0.9), "pumpkin": ("crop_pumpkin", 1, 0.45),
+    "crop_row": ("crops_dirtRow", 1, 1.0), "fence_a": ("fence_simple", 1, 1.0, 0), "fence_b": ("fence_simple", 1, 1.0, 90),
+    "tent": ("tent_detailedOpen", 2, 0.85, 200), "campfire": ("campfire_stones", 1, 0.7), "log_seat": ("log_large", 1, 0.9, 30),
+    "ruin_ring": ("statue_ring", 2, 0.8), "ruin_column": ("statue_columnDamaged", 1, 0.6), "ruin_obelisk": ("statue_obelisk", 1, 0.55),
+    "ruin_head": ("statue_head", 1, 0.6, 160), "sign": ("sign", 1, 0.5, 225), "stones": ("stone_tallC", 1, 0.6),
+})
+
+for _k, _v in DECOR.items():
+    _m, _s, _f = _v[:3]
+    BUILDINGS[f"decor_{_k}"] = {"size": _s, "fill": _f, "parts": [P("nature", _m, rot=_v[3] if len(_v) > 3 else 0)]}
 
 MOVE8 = [i / 8 for i in range(8)]
 ATK6 = [0.0, 0.18, 0.34, 0.5, 0.66, 0.84]
@@ -240,6 +252,7 @@ UNITS = {
     "brute": unit("grave", "character-zombie", 1.35, "walk", "attack-melee-right", [{"item": "survival:tool-axe", "rot": R, "scale": 1.9}]),
     "leech": unit("grave", "character-skeleton", 0.95, "sprint", "attack-melee-left",
                   [{"item": "sword", "bone": "arm-left", "rot": L, "scale": 1.5, "color": (0.35, 0.3, 0.28)}]),
+    "hero": unit("grave", "character-keeper", 1.2, "walk", "attack-melee-right", [{"item": "lanternstaff", "rot": (-90, 0, 0), "scale": 1.6}]),
     "wraith": unit("grave", "character-ghost", 1.25, "fall", "holding-both-shoot", [{"item": "darkstaff", "rot": R, "scale": 1.5}]),
 }
 
