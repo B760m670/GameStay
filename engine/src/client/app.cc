@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <sstream>
 
 #include "engine/atlas.h"
 #include "engine/audio.h"
@@ -50,6 +51,7 @@ void App::init() {
     if (!loaded) S = lf::village::create(now());
     lf::village::tick(S, now());
     enterVillage();
+    if (S.started && resumeBattle()) return;
     if (!S.started) {
         S.started = true;
         dialogue(lf::campaign::intro(), [this] { toast("Нажми на постройку, чтобы улучшить её"); });
@@ -57,7 +59,40 @@ void App::init() {
     }
 }
 
-void App::save() { platform::writeFile(savePath(), lf::village::save(S)); }
+static std::string battlePath() { return platform::saveDir() + "/battle.sav"; }
+
+void App::save() {
+    platform::writeFile(savePath(), lf::village::save(S));
+    saveBattle();
+}
+
+// Незаконченный бой сохраняется записью действий; пустой файл — боя нет.
+void App::saveBattle() {
+    if (scene != Scene::Battle || !bt.b || bt.b->ended || !bt.started) { platform::writeFile(battlePath(), ""); return; }
+    std::string head = "kind " + std::to_string((int)bt.kind) + "\nmission " + std::to_string(bt.missionIdx) + "\ntitle " + bt.title + "\n";
+    platform::writeFile(battlePath(), head + lf::replay::save(bt.rec));
+}
+
+bool App::resumeBattle() {
+    std::vector<unsigned char> data;
+    if (!platform::readFile(battlePath(), data) || data.empty()) return false;
+    std::string s(data.begin(), data.end());
+    lf::replay::Record rec;
+    if (!lf::replay::load(s, rec)) return false;
+    int kind = 0, mission = -1;
+    std::string title;
+    std::istringstream in(s);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.rfind("kind ", 0) == 0) kind = std::atoi(line.c_str() + 5);
+        else if (line.rfind("mission ", 0) == 0) mission = std::atoi(line.c_str() + 8);
+        else if (line.rfind("title ", 0) == 0) title = line.substr(6);
+    }
+    if (kind < 0 || kind > 2 || (kind == (int)BattleKind::Mission && (mission < 0 || mission >= (int)lf::campaign::missions().size()))) return false;
+    enterBattle(rec.opts, (BattleKind)kind, title, mission, &rec);
+    toast("Бой продолжается с того же места", rgba(255, 216, 107));
+    return true;
+}
 
 void App::toast(const std::string& s, uint32_t color) {
     if (color == rgba(255, 140, 130)) audio::play("error", 0.5f);
@@ -207,7 +242,7 @@ void App::frame(float dt, float width, float height) {
     gfx::endFrame(rgba(13, 10, 28));
     audio::update();
     saveT += dt;
-    if (saveT > 5 && scene == Scene::Village) { saveT = 0; save(); }
+    if (saveT > 5) { saveT = 0; save(); }
 }
 
 // ---------- титульный экран ----------
@@ -285,7 +320,7 @@ void App::startMission(int idx) {
     o.spells = lf::village::spellCharges(S.level);
     o.heroLevel = lf::village::heroUnlocked(S) ? S.heroLevel : 0;
     o.seed = ms.seed;
-    enterBattle(std::make_unique<lf::Battle>(o), BattleKind::Mission, ms.title, idx);
+    enterBattle(o, BattleKind::Mission, ms.title, idx);
 }
 
 void App::startRaid() {
@@ -302,7 +337,7 @@ void App::startRaid() {
     o.heroLevel = lf::village::heroUnlocked(S) ? S.heroLevel : 0;
     o.seed = seed;
     std::string name = lf::basegen::rivalName(rng) + " · Фонарь " + std::to_string(eLL);
-    enterBattle(std::make_unique<lf::Battle>(o), BattleKind::Raid, name);
+    enterBattle(o, BattleKind::Raid, name);
 }
 
 void App::startNight() {
@@ -317,7 +352,7 @@ void App::startNight() {
     o.hazeMult = night.hazeMult;
     o.seed = seed;
     o.duration = lf::kNightTime;
-    enterBattle(std::make_unique<lf::Battle>(o), BattleKind::Night, "Ночь " + std::to_string(S.nights + 1));
+    enterBattle(o, BattleKind::Night, "Ночь " + std::to_string(S.nights + 1));
 }
 
 void App::finishBattle() {

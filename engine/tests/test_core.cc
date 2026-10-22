@@ -301,6 +301,42 @@ TEST(hero_deploy_flash_and_upgrade) {
     CHECK(village::load(village::save(S), L) && L.heroLevel == 2, "");
 }
 
+TEST(replay_restores_battle_exactly) {
+    replay::Record rec;
+    rec.opts.layout = basegen::generate(3, 21);
+    rec.opts.army[TroopType::Torch] = 20;
+    rec.opts.army[TroopType::Archer] = 10;
+    rec.opts.spells[Spell::Rage] = 1;
+    rec.opts.heroLevel = 2;
+    rec.opts.eclipseCharges = 1;
+    rec.opts.seed = 9;
+    const float dt = 1.f / 30;
+    Battle live(rec.opts);
+    auto act = [&](replay::Act k, int arg, float x, float y) {
+        replay::Action a{rec.steps, k, arg, x, y};
+        if (replay::apply(live, a)) rec.actions.push_back(a);
+    };
+    for (int s = 0; s < 400; s++) {
+        if (s % 7 == 0 && s < 140) act(replay::Act::Deploy, s % 2 ? 0 : 1, 1.f + s * 0.05f, 1.2f);
+        if (s == 30) act(replay::Act::Hero, 0, 2.f, 1.f);
+        if (s == 90) act(replay::Act::Spell, (int)Spell::Rage, 6.f, 6.f);
+        if (s == 120) act(replay::Act::HeroAbility, 0, 0, 0);
+        if (s == 150) act(replay::Act::Eclipse, 0, 20.f, 20.f);
+        live.step(dt);
+        rec.steps++;
+    }
+    replay::Record back;
+    CHECK(replay::load(replay::save(rec), back), "");
+    Battle again(back.opts);
+    replay::fastForward(again, back, dt);
+    CHECK(again.troops.size() == live.troops.size(), "%zu vs %zu", again.troops.size(), live.troops.size());
+    CHECK(again.percent() == live.percent() && again.time == live.time, "pct %d vs %d", again.percent(), live.percent());
+    bool same = true;
+    for (size_t i = 0; i < live.troops.size() && i < again.troops.size(); i++)
+        same = same && live.troops[i].x == again.troops[i].x && live.troops[i].hp == again.troops[i].hp;
+    CHECK(same, "troop state differs");
+}
+
 int main() {
     for (auto& [name, fn] : registry()) {
         int before = failures;

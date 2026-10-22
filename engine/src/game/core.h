@@ -407,6 +407,18 @@ struct Night { std::vector<Wave> waves; float hazeMult; };
 Night nightWaves(int LL, int nights, int seed);
 }
 
+// ---------- Запись боя (продолжение после закрытия приложения) ----------
+namespace replay {
+enum class Act { Deploy, Eclipse, Spell, Hero, HeroAbility };
+struct Action { int step = 0; Act kind = Act::Deploy; int arg = 0; float x = 0, y = 0; };
+struct Record { BattleOptions opts; std::vector<Action> actions; int steps = 0; };
+bool apply(Battle& B, const Action& a);
+// Повторить действия и шаги записи на свежем бою, созданном из r.opts.
+void fastForward(Battle& B, const Record& r, float dt);
+std::string save(const Record& r);
+bool load(const std::string& s, Record& r);
+}
+
 // ---------- Кампания ----------
 enum class Speaker { Narrator, Vira, Keeper, Haze, King };
 struct Line { Speaker who; const char* text; };

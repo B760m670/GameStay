@@ -56,6 +56,7 @@ struct BattleState {
     long long gotOre = 0, gotAether = 0, gotShards = 0, lostOre = 0, lostAether = 0;
     bool firstWin = false;
     int ratingDelta = 0;
+    lf::replay::Record rec;  // запись для продолжения после закрытия приложения
 };
 
 class App {
@@ -154,7 +155,11 @@ private:
 
     // бой
     BattleState bt;
-    void enterBattle(std::unique_ptr<lf::Battle> b, BattleKind kind, const std::string& title, int missionIdx = -1);
+    void enterBattle(const lf::BattleOptions& o, BattleKind kind, const std::string& title, int missionIdx = -1,
+                     const lf::replay::Record* resume = nullptr);
+    bool act(lf::replay::Act kind, int arg, Vec2 w);  // действие игрока в бою (с записью)
+    void saveBattle();
+    bool resumeBattle();
     void battleFrame(float dt, const std::vector<input::Event>& world);
     void battleInput();
     void drawBattleWorld();

@@ -53,14 +53,19 @@ void debris(std::vector<world::Particle>& ps, float x, float y, float size, int 
 }
 }
 
-void App::enterBattle(std::unique_ptr<lf::Battle> b, BattleKind kind, const std::string& title, int missionIdx) {
+void App::enterBattle(const lf::BattleOptions& o, BattleKind kind, const std::string& title, int missionIdx, const lf::replay::Record* resume) {
     bt = BattleState{};
     audio::music("battle", 0.38f);
-    bt.b = std::move(b);
+    bt.b = std::make_unique<lf::Battle>(o);
+    bt.rec.opts = o;
+    if (resume) {  // продолжение: повторяем записанные действия и шаги
+        bt.rec = *resume;
+        lf::replay::fastForward(*bt.b, bt.rec, kDT);
+    }
     bt.kind = kind;
     bt.title = title;
     bt.missionIdx = missionIdx;
-    bt.started = kind == BattleKind::Night;
+    bt.started = kind == BattleKind::Night || (resume && resume->steps > 0);
     scene = Scene::Battle;
     modal = Modal::None;
     gest.reset();
@@ -83,19 +88,26 @@ void App::enterBattle(std::unique_ptr<lf::Battle> b, BattleKind kind, const std:
     gest.onTap = [this](Vec2 w, Vec2) { if (isSpellSel(bt.sel)) tryBattleAction(w); };
 }
 
+bool App::act(lf::replay::Act kind, int arg, Vec2 w) {
+    lf::replay::Action a{bt.rec.steps, kind, arg, w.x, w.y};
+    if (!lf::replay::apply(*bt.b, a)) return false;
+    bt.rec.actions.push_back(a);  // для продолжения боя после закрытия приложения
+    return true;
+}
+
 bool App::tryBattleAction(Vec2 w) {
     auto& B = *bt.b;
     if (B.ended || bt.kind == BattleKind::Night) return false;
     if (bt.sel == kEclipseSel) {
         if (B.eclipseChargesLeft <= 0 || w.x < 0 || w.y < 0 || w.x > lf::kGrid || w.y > lf::kGrid) return false;
-        B.castEclipse(w.x, w.y);
+        act(lf::replay::Act::Eclipse, 0, w);
         bt.started = true;
         toast("Затмение! Свет погас", kGood);
         return true;
     }
     if (bt.sel == kHeroSel) {
         if (B.heroIdx >= 0) return false;
-        if (B.deployHero(w.x, w.y)) {
+        if (act(lf::replay::Act::Hero, 0, w)) {
             bt.started = true;
             toast("Фонарщик в бою! Нажми на его карточку — Вспышка", kGold);
             return true;
@@ -105,11 +117,11 @@ bool App::tryBattleAction(Vec2 w) {
     }
     if (bt.sel == kHealSel || bt.sel == kRageSel) {
         if (w.x < 0 || w.y < 0 || w.x > lf::kGrid || w.y > lf::kGrid) return false;
-        if (!B.castSpell(bt.sel == kHealSel ? lf::Spell::Heal : lf::Spell::Rage, w.x, w.y)) return false;
+        if (!act(lf::replay::Act::Spell, (int)(bt.sel == kHealSel ? lf::Spell::Heal : lf::Spell::Rage), w)) return false;
         bt.started = true;
         return true;
     }
-    if (B.deploy((lf::TroopType)bt.sel, w.x, w.y)) { bt.started = true; return true; }
+    if (act(lf::replay::Act::Deploy, bt.sel, w)) { bt.started = true; return true; }
     if (w.x >= 0 && w.y >= 0 && w.x < lf::kGrid && w.y < lf::kGrid) bt.flashes.push_back({(int)w.y * lf::kGrid + (int)w.x, 0.5f});
     if (bt.warnT <= 0) { toast("Высадка только во тьме и не на постройках", kBad); bt.warnT = 1.5f; }
     return false;
@@ -121,7 +133,7 @@ void App::autoDeploy() {
     int k = 0;
     for (auto& [type, n] : B.pool) {
         int cnt = n;
-        for (int i = 0; i < cnt; i++, k++) B.deploy(type, 1.0f + (k % 20) * 0.4f, 1.0f + (k / 20) * 0.4f);
+        for (int i = 0; i < cnt; i++, k++) act(lf::replay::Act::Deploy, (int)type, {1.0f + (k % 20) * 0.4f, 1.0f + (k / 20) * 0.4f});
     }
     bt.started = true;
 }
@@ -140,7 +152,7 @@ void App::battleFrame(float dt, const std::vector<input::Event>& worldEvents) {
     }
     if (bt.started && !B.ended && modal == Modal::None && dlg.empty()) {
         bt.acc += std::min(dt, 0.1f) * bt.speed;
-        while (bt.acc >= kDT) { B.step(kDT); bt.acc -= kDT; }
+        while (bt.acc >= kDT) { B.step(kDT); bt.rec.steps++; bt.acc -= kDT; }
     }
     for (const auto& ev : B.events) {
         float pv = 0.9f + (float)((int)(ev.x * 7 + ev.y * 3) % 5) * 0.05f;  // разброс высоты без ГСЧ боя
@@ -356,7 +368,7 @@ void App::drawBattleHud() {
         font::draw(label, bx + bw / 2, by + bh - 24, id == kHeroSel ? 14 : 16, n > 0 ? 0xffffffffu : kMuted, font::Center);
         if (n <= 0) gfx::fillRect(bx + 3, by + 3, bw - 6, bh - 6, rgba(10, 6, 20, 120));
         if (ui::tapped(r)) {
-            if (id == kHeroSel && B.heroIdx >= 0) B.heroAbility();
+            if (id == kHeroSel && B.heroIdx >= 0) act(lf::replay::Act::HeroAbility, 0, {0, 0});
             else bt.sel = id;
         }
         bx += bw + gap;
