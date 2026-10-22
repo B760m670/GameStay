@@ -143,10 +143,89 @@ def emission_material(name, color, strength):
 
 TURRETS = []  # корневые объекты поворотных частей последней собранной постройки
 
+# Средневековая палитра для набора fantasy-town: участки colormap (колонка 32 px, строка 128 px) -> цвет.
+ROOFS = {"red": (178, 58, 40), "blue": (58, 92, 168), "green": (60, 128, 64), "slate": (84, 88, 104), "gold": (210, 150, 50),
+         "purple": (112, 70, 150)}
+PALETTES = {
+    "town": {(3, 2): (196, 182, 156),    # камень стен — тёплый песчаник
+             (9, 3): (112, 66, 36),      # балки и наличники — тёмный дуб
+             (11, 3): (236, 220, 184),   # заполнение фахверка — кремовая штукатурка
+             (15, 3): (110, 104, 100),   # трубы, тёмный камень
+             (3, 3): "roof", (1, 3): "roof"},
+    "castle": {(13, 3): (184, 176, 162),  # светлый камень кладки
+               (15, 3): (128, 120, 112),  # тёмный камень цоколя и швов
+               (9, 3): (104, 62, 34),     # дерево
+               (5, 3): (140, 88, 48),     # двери, ворота
+               (7, 3): (238, 226, 198),   # полотнища флагов
+               (9, 2): "roof"},
+}
+
+
+def images_of(objs):
+    out = set()
+    for o in objs:
+        for slot in getattr(o, "material_slots", []):
+            m = slot.material
+            if m and m.use_nodes:
+                out |= {n.image for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image}
+    return out
+
+
+def recolor(images, kit, roof="red"):
+    """Перекрасить colormap набора Kenney в средневековую палитру с сохранением градиентов."""
+    import numpy as np
+    pal = {k: (ROOFS.get(roof, ROOFS["red"]) if v == "roof" else v) for k, v in PALETTES[kit].items()}
+    for img in images:
+        if img.get("lf_recolored") or tuple(img.size) != (512, 512):
+            continue
+        px = np.empty(512 * 512 * 4, dtype=np.float32)
+        img.pixels.foreach_get(px)
+        px = px.reshape(512, 512, 4)  # строки снизу вверх
+        for (cx, ry), rgb in pal.items():
+            y0, y1 = 512 - (ry + 1) * 128, 512 - ry * 128
+            region = px[y0:y1, cx * 32:(cx + 1) * 32, :3]
+            lum = region.mean(axis=2, keepdims=True)
+            k = lum / max(1e-4, float(lum.mean()))
+            region[:] = np.clip(np.array(rgb, dtype=np.float32) / 255.0 * k, 0, 1)
+        img.pixels.foreach_set(px.ravel())
+        img["lf_recolored"] = 1
+
+
+def add_grain(objs, strength=0.12):
+    """Зерно материала: лёгкая неравномерность цвета и рельеф — поверхность читается как камень/дерево, а не пластик."""
+    done = set()
+    for o in objs:
+        for slot in getattr(o, "material_slots", []):
+            m = slot.material
+            if not m or m.name in done or not m.use_nodes:
+                continue
+            done.add(m.name)
+            nt = m.node_tree
+            b = nt.nodes.get("Principled BSDF")
+            if not b or not b.inputs["Base Color"].is_linked:
+                continue
+            src = b.inputs["Base Color"].links[0].from_socket
+            noise = nt.nodes.new("ShaderNodeTexNoise")
+            noise.inputs["Scale"].default_value = 38
+            noise.inputs["Detail"].default_value = 6
+            mix = nt.nodes.new("ShaderNodeMix")
+            mix.data_type = "RGBA"
+            mix.blend_type = "MULTIPLY"
+            mix.inputs["Factor"].default_value = strength
+            nt.links.new(src, mix.inputs[6])
+            nt.links.new(noise.outputs["Color"], mix.inputs[7])
+            nt.links.new(mix.outputs[2], b.inputs["Base Color"])
+            bump = nt.nodes.new("ShaderNodeBump")
+            bump.inputs["Strength"].default_value = 0.18
+            bump.inputs["Distance"].default_value = 0.02
+            nt.links.new(noise.outputs["Fac"], bump.inputs["Height"])
+            nt.links.new(bump.outputs["Normal"], b.inputs["Normal"])
+
 
 def build(recipe, assets):
     """Собирает модель по рецепту, нормирует под размер клетки. Возвращает (объекты, высота в метрах)."""
     objs = []
+    kit_imgs = {}
     top = 0.0
     for p in recipe["parts"]:
         kit, name = p["kit"], p["model"]
@@ -156,11 +235,19 @@ def build(recipe, assets):
         if z == "top":
             z = top
         new = import_part(path, (x, y, z), p.get("rot", 0), p.get("scale", 1))
+        if p.get("tint"):
+            tint_all(new, p["tint"], p.get("emit", 0))
+        if kit in PALETTES:
+            kit_imgs.setdefault(kit, set()).update(images_of(new))
         if p.get("turret"):
             TURRETS.extend(o for o in new if o.parent is None)
         objs += new
         _, mx = bounds(new)
         top = max(top, mx.z)
+    for kit, imgs in kit_imgs.items():
+        recolor(imgs, kit, recipe.get("roof", "red"))
+    if recipe.get("grain", True):
+        add_grain(objs)
     # Подогнать по площади клетки
     mn, mx = bounds(objs)
     ext = max(mx.x - mn.x, mx.y - mn.y)

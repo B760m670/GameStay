@@ -7,3 +7,5 @@ __pycache__/
 engine/build/
 engine/shots/
 engine/save/
+*.sav
+settings.txt

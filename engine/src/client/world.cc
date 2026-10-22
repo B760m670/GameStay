@@ -84,8 +84,8 @@ const gfx::Texture* groundTex() {
     static const gfx::Texture* t = gfx::loadTexture(platform::assetDir() + "/art/ground.jpg", true);
     return t;
 }
-const gfx::Texture* grassDetailTex() {
-    static const gfx::Texture* t = gfx::loadTexture(platform::assetDir() + "/art/grass_detail.png", true);
+const gfx::Texture* grassTex() {
+    static const gfx::Texture* t = gfx::loadTexture(platform::assetDir() + "/art/grass_tile.png", true);
     return t;
 }
 }  // namespace
@@ -119,16 +119,25 @@ void drawGround(const Camera& cam) {
                 atlas::draw(atlas::get("g/grass" + std::to_string(h % 6)), p.x, p.y, s);
             }
     }
-    // травинки поверх поля (вблизи)
-    const gfx::Texture* d = grassDetailTex();
-    if (!d || cam.zoom < 0.45f) return;
-    uint32_t c = rgba(255, 255, 255, (int)(255 * std::min(1.f, (cam.zoom - 0.45f) / 0.3f)));
-    for (int j = 0; j < lf::kGrid; j += 4)
-        for (int i = 0; i < lf::kGrid; i += 4) {
-            Vec2 q0 = cam.toScreen((float)i, (float)j), q1 = cam.toScreen(i + 4.f, (float)j), q2 = cam.toScreen(i + 4.f, j + 4.f), q3 = cam.toScreen((float)i, j + 4.f);
+    // настоящая трава (отрендерена в Blender, плитка 4×4 клетки) с переливами оттенков по полю
+    const gfx::Texture* gt = grassTex();
+    if (!gt) return;
+    auto vcol = [](float x, float y) {
+        float n = std::sin(x * 0.31f + 1.3f) * std::sin(y * 0.27f + 0.4f) * 0.5f + std::sin((x + y) * 0.13f) * 0.5f;  // -1..1
+        float out = std::max({-x, -y, x - lf::kGrid, y - lf::kGrid, 0.f});
+        float a = std::clamp(1.f - out / 2.2f, 0.f, 1.f);
+        float k = 0.93f + 0.07f * n;
+        return rgba((int)(255 * std::min(1.f, k * (1.f + 0.05f * n))), (int)(255 * k), (int)(255 * k * (0.95f - 0.05f * n)), (int)(255 * a));
+    };
+    for (int j = -2; j < lf::kGrid + 2; j += 2)
+        for (int i = -2; i < lf::kGrid + 2; i += 2) {
+            float x0 = (float)i, y0 = (float)j, x1 = x0 + 2, y1 = y0 + 2;
+            Vec2 q0 = cam.toScreen(x0, y0), q1 = cam.toScreen(x1, y0), q2 = cam.toScreen(x1, y1), q3 = cam.toScreen(x0, y1);
             if (q1.x < 0 || q3.x > cam.w || q0.y > cam.h || q2.y < 0) continue;
-            gfx::Vtx v[4] = {{q0.x, q0.y, 0, 0, c}, {q1.x, q1.y, 1, 0, c}, {q2.x, q2.y, 1, 1, c}, {q3.x, q3.y, 0, 1, c}};
-            gfx::quad(d, v);
+            float u0 = (((i % 4) + 4) % 4) / 4.f, v0 = (((j % 4) + 4) % 4) / 4.f;
+            gfx::Vtx v[4] = {{q0.x, q0.y, u0, v0, vcol(x0, y0)}, {q1.x, q1.y, u0 + 0.5f, v0, vcol(x1, y0)},
+                             {q2.x, q2.y, u0 + 0.5f, v0 + 0.5f, vcol(x1, y1)}, {q3.x, q3.y, u0, v0 + 0.5f, vcol(x0, y1)}};
+            gfx::quad(gt, v);
         }
 }
 
@@ -343,7 +352,7 @@ void drawFog(const Camera& cam, const std::vector<lf::LightSource>& src, const s
     std::copy(L, L + N * N, gLight);
     gDark = darkness;
     gLightValid = true;
-    const uint32_t fog = rgba(36, 18, 78), red = rgba(150, 20, 30);  // Мгла: глубокий фиолетовый, а не чернота
+    const uint32_t fog = rgba(78, 44, 150), red = rgba(150, 20, 30);  // Мгла: глубокий фиолетовый, а не чернота
     for (int jj = 0; jj < M; jj++)
         for (int ii = 0; ii < M; ii++) {
             float i = (float)(ii - kPad), j = (float)(jj - kPad);
@@ -358,6 +367,25 @@ void drawFog(const Camera& cam, const std::vector<lf::LightSource>& src, const s
             gfx::Vtx v[4] = {{a.x, a.y, 0, 0, col(la)}, {b.x, b.y, 0, 0, col(lb)}, {c.x, c.y, 0, 0, col(lc)}, {d.x, d.y, 0, 0, col(ld)}};
             gfx::quad(gfx::white(), v);
         }
+    // золотая кромка по границе света: видно, где можно строить
+    gfx::setBlend(gfx::Blend::Add);
+    for (int jj = 0; jj < M; jj++)
+        for (int ii = 0; ii < M; ii++) {
+            float la = L[jj * N + ii], lb = L[jj * N + ii + 1], lc = L[(jj + 1) * N + ii + 1], ld = L[(jj + 1) * N + ii];
+            float lo = std::min({la, lb, lc, ld}), hi = std::max({la, lb, lc, ld});
+            if (hi < 0.15f || lo > 0.85f) continue;
+            float i = (float)(ii - kPad), j = (float)(jj - kPad);
+            Vec2 a = cam.toScreen(i, j), b = cam.toScreen(i + 1.f, j), c = cam.toScreen(i + 1.f, j + 1.f), d = cam.toScreen(i, j + 1.f);
+            if (b.x < 0 || d.x > cam.w || a.y > cam.h || c.y < 0) continue;
+            float pulse = 0.8f + 0.2f * std::sin(t * 2 + i * 0.3f + j * 0.2f);
+            auto rim = [&](float l) {
+                float k = 1 - std::min(1.f, std::fabs(l - 0.5f) * 2.4f);
+                return rgba(255, 190, 80, (int)(90 * k * k * pulse));
+            };
+            gfx::Vtx v[4] = {{a.x, a.y, 0, 0, rim(la)}, {b.x, b.y, 0, 0, rim(lb)}, {c.x, c.y, 0, 0, rim(lc)}, {d.x, d.y, 0, 0, rim(ld)}};
+            gfx::quad(gfx::white(), v);
+        }
+    gfx::setBlend(gfx::Blend::Alpha);
     // тёплое свечение света
     for (const auto& s : src) {
         Vec2 p = cam.toScreen(s.x, s.y);

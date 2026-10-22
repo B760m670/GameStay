@@ -241,7 +241,7 @@ void App::drawBattleWorld() {
     for (const auto& b : B.buildings) if (b.isStructure()) world::drawDirt(cam, (float)b.x, (float)b.y, (float)b.size);
     world::drawMeadow(cam, t);
     bool tint = bt.kind != BattleKind::Night && bt.sel >= 0 && !isSpellSel(bt.sel) && !B.ended;
-    world::drawFog(cam, B.sources, B.eclipses, t, 0.62f, tint);
+    world::drawFog(cam, B.sources, B.eclipses, t, 0.36f, tint);
     world::drawWaterFx(cam, t);
     for (const auto& z : B.zones) world::drawSpellZone(cam, z, B.time, t);
     for (auto& f : bt.flashes) world::drawFootprint(cam, (float)(f.first % lf::kGrid), (float)(f.first / lf::kGrid), 1, rgba(255, 60, 60, (int)(f.second * 400)));

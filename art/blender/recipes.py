@@ -43,20 +43,76 @@ def house(cells_x=2, cells_y=2, storeys=1, front="town", roof="roof-gable"):
     return parts
 
 
+def T(kit, model, at=(0, 0), z=0, rot=0, scale=1.0, tint=None, emit=0.0):
+    d = P(kit, model, at, z, rot, scale)
+    if tint:
+        d["tint"] = tint
+        d["emit"] = emit
+    return d
+
+
+def townhouse(nx, ny, floors, at=(0.0, 0.0), roof="roof-gable", high=False, door=True, banner=False, chimney=False):
+    """Средневековый дом: каменный первый этаж, фахверк выше, черепичная крыша.
+    Видимые фасады — -Y (поворот 270) и +X (поворот 0); задние стены глухие."""
+    ox, oy = at
+    xs = [ox + i - (nx - 1) / 2 for i in range(nx)]
+    ys = [oy + j - (ny - 1) / 2 for j in range(ny)]
+    parts = []
+    for f in range(floors):
+        z = float(f)
+        stone = f == 0
+        for k, x in enumerate(xs):
+            if stone:
+                front = "wall-door" if door and k == len(xs) - 1 else "wall-window-stone"
+            else:
+                front = "wall-wood-window-shutters" if k % 2 == 0 else "wall-wood-detail-cross"
+            parts.append(P("town", front, (x, ys[0]), z, 270))
+            parts.append(P("town", "wall" if stone else "wall-wood", (x, ys[-1]), z, 90))
+        for k, y in enumerate(ys):
+            if stone:
+                side = "wall-window-stone" if k % 2 == 0 else "wall"
+            else:
+                side = "wall-wood-window-shutters" if k % 2 == 1 or len(ys) == 1 else "wall-wood-detail-cross"
+            parts.append(P("town", side, (xs[-1], y), z, 0))
+            parts.append(P("town", "wall" if stone else "wall-wood", (xs[0], y), z, 180))
+    rp = "roof-high-gable" if high else roof
+    for x in xs:
+        for y in ys:
+            parts.append(P("town", rp, (x, y), float(floors), 90))
+    if chimney:
+        parts.append(P("town", "chimney", (xs[0], ys[-1]), float(floors) - 0.2, 0, 1.0))
+    if banner:
+        parts.append(P("town", "banner-red", (xs[-1], ys[0]), max(0.0, floors - 1.2), 270))
+    return parts
+
+
+def keep(levels, at=(0.0, 0.0), scale=1.55):
+    """Каменная башня-донжон из набора замка."""
+    parts = [P("castle", "tower-square-base", at, 0, 0, scale)]
+    parts += [P("castle", "tower-square-mid-windows", at, "top", 0, scale) for _ in range(levels)]
+    parts.append(P("castle", "tower-square-top-roof-high-windows", at, "top", 0, scale))
+    return parts
+
+
+def turret(at, high=True):
+    return [P("castle", "tower-hexagon-base", at, 0, 0, 0.75), P("castle", "tower-hexagon-mid", at, "top", 0, 0.75),
+            P("castle", "tower-hexagon-roof" if high else "tower-hexagon-top", at, "top", 0, 0.75)]
+
+
 def lantern(t):
-    parts = [P("castle", "tower-square-base", (x, y)) for x in (0.5, -0.5) for y in (0.5, -0.5)]
-    parts.append(P("castle", "tower-square-mid-windows", (0, 0), 1.0, 0, 1.55))
+    """Фонарь — сердце поселения: каменный донжон с огнём наверху, двор с фонарями и знамёнами."""
+    parts = keep(1 + (t >= 2) + (t >= 3))
+    parts += [P("town", "stairs-stone", (0.2, -1.45), 0, 0, 1.0)]
+    parts += [P("town", "lantern", p, 0, 0, 0.9) for p in ((1.45, -1.45), (-0.9, -1.5), (1.5, 0.9))]
+    parts += [P("town", "banner-red", (1.05, -0.4), 0.9, 0, 1.3), P("town", "banner-red", (-0.4, -1.05), 0.9, 270, 1.3)]
+    parts += [P("survival", "barrel", (-1.4, -1.0), 0, 0, 1.2), P("survival", "box", (-1.5, -0.4), 0, 20, 1.3)]
     if t >= 2:
-        parts.append(P("castle", "tower-square-mid-windows", (0, 0), "top", 0, 1.55))
-    parts.append(P("castle", "tower-square-top-roof-high-windows", (0, 0), "top", 0, 1.55))
-    posts = [(1.35, -1.35), (-1.35, -1.35)] + ([(1.35, 1.35), (-1.35, 1.35)] if t >= 2 else [])
-    parts += [P("grave", "lightpost-double" if t >= 3 else "lightpost-single", p, 0, 0, 0.9) for p in posts]
-    parts.append(P("castle", "flag-banner-short", (0.62, -1.02), 1.0, -90, 1.0))
+        parts += turret((1.45, 1.45)) + turret((-1.45, -1.45))
     if t >= 3:
-        parts += [P("castle", "tower-top", (x, y), 1.0, 0, 0.55) for x, y in ((0.85, 0.85), (-0.85, -0.85), (0.85, -0.85), (-0.85, 0.85))]
+        parts += turret((1.45, -1.45), False) + turret((-1.45, 1.45), False)
         parts.append(P("castle", "flag", (0, 0), "top", 0, 1.0))
-    return {"size": 4, "fill": 0.95, "parts": parts,
-            "glow": [{"h": 0.5, "r": 0.1, "x": 0.55, "y": -0.55, "color": WARM, "strength": 25, "light": 200}]}
+    return {"size": 4, "fill": 0.95, "roof": "gold", "parts": parts,
+            "glow": [{"h": 0.84, "r": 0.12, "x": 0.0, "y": 0.0, "color": WARM, "strength": 30, "light": 260}]}
 
 
 def beacon(t):
@@ -108,68 +164,94 @@ def wall(t):
 
 
 def ore_mine(t):
-    parts = [P("survival", "structure-metal" if t >= 2 else "structure", (0, 0.15), 0, 0, 1.6),
-             P("survival", "resource-stone-large", (0.45, -0.45), 0, 20, 2.2), P("survival", "resource-stone-large", (-0.4, -0.5), 0, 70, 1.9),
-             P("survival", "tool-pickaxe", (0.05, -0.75), 0, 30, 2.0)]
+    """Шахта: вход в скалу с крепью, вагонетка, кучи руды, фонарь у входа."""
+    ORE_C = (0.95, 0.5, 0.15)
+    parts = [P("nature", "cliff_cave_rock", (0, 0.25), 0, 0, 1.25),
+             T("survival", "resource-stone-large", (0.75, -0.7), scale=1.6, tint=ORE_C, emit=0.05),
+             T("survival", "resource-stone", (0.35, -0.95), scale=1.4, tint=ORE_C, emit=0.05),
+             P("town", "cart", (-0.6, -0.75), 0, 30, 1.0), P("town", "lantern", (0.9, 0.1), 0, 0, 0.7),
+             P("survival", "tool-pickaxe", (0.1, -1.1), 0, 60, 1.6)]
     if t >= 2:
-        parts.append(P("town", "cart", (-0.85, 0.6), 0, 200, 1.0))
+        parts += [P("town", "pillar-wood", (-0.55, -0.25), 0, 0, 1.0), P("town", "pillar-wood", (0.55, -0.25), 0, 0, 1.0),
+                  P("town", "poles-horizontal", (0, -0.25), 0.95, 0, 1.1)]
     if t >= 3:
-        parts += [P("survival", "resource-stone", (0.9, 0.5), 0, 0, 1.4), P("castle", "flag-pennant", (0.5, 0.6), 0, 0, 0.9)]
-    return {"size": 3, "fill": 0.92, "parts": parts}
+        parts += [T("survival", "resource-stone-large", (-1.05, 0.3), scale=1.5, tint=ORE_C, emit=0.05),
+                  P("castle", "flag-pennant", (1.0, 0.9), 0, 0, 0.9), P("town", "cart-high", (-1.0, -0.2), 0, 60, 0.9)]
+    return {"size": 3, "fill": 0.95, "roof": "red", "parts": parts}
 
 
 def aether_well(t):
-    parts = [P("town", {1: "fountain-round", 2: "fountain-round-detail", 3: "fountain-square-detail"}[t])]
+    """Эфирный колодец: каменный колодец, светящийся кристалл, столбы с фонарями."""
+    parts = [P("town", {1: "fountain-round", 2: "fountain-round-detail", 3: "fountain-square-detail"}[t]),
+             T("td", "detail-crystal-large", (0, 0), 0.15, 0, 1.3 + 0.25 * t, tint=AETHER, emit=0.4)]
+    parts += [P("town", "pillar-stone", p, 0, 0, 1.3) for p in ((0.95, -0.95), (-0.95, -0.95))]
     if t >= 2:
-        parts.append(P("td", "detail-crystal", (0, 0), 0.1, 0, 1.2 + 0.3 * t))
-    return {"size": 3, "fill": 0.9, "parts": parts, "glow": [{"h": 0.35, "r": 0.05, "color": AETHER, "strength": 4, "light": 30 + 15 * t}]}
+        parts += [P("town", "pillar-stone", p, 0, 0, 1.3) for p in ((0.95, 0.95), (-0.95, 0.95))]
+        parts.append(P("town", "lantern", (1.2, -0.3), 0, 0, 0.75))
+    if t >= 3:
+        parts += [T("td", "detail-crystal", p, 0.15, r, 1.2, tint=AETHER, emit=0.4) for p, r in (((0.45, -0.3), 30), ((-0.35, 0.4), 70))]
+    return {"size": 3, "fill": 0.92, "roof": "blue", "parts": parts,
+            "glow": [{"h": 0.45, "r": 0.06, "color": AETHER, "strength": 6, "light": 40 + 15 * t}]}
 
 
 def ore_store(t):
-    s = 1.5
-    parts = [P("survival", "box-large", (0.35, 0.35), 0, 0, s), P("survival", "box-large", (-0.35, -0.35), 0, 0, s),
-             P("survival", "barrel", (0.55, -0.55), 0, 0, 1.6)]
+    """Рудный склад: амбар с ящиками и кучами руды у ворот."""
+    ORE_C = (0.95, 0.5, 0.15)
+    parts = townhouse(2, 2 if t >= 2 else 1, 1 + (t >= 3), (0.1, 0.25), chimney=False, banner=t >= 2)
+    parts += [P("survival", "box-large", (1.15, -0.9), 0, 15, 1.1), P("survival", "box-large", (0.65, -1.15), 0, 0, 1.0),
+              T("survival", "resource-stone-large", (-0.75, -1.05), scale=1.3, tint=ORE_C, emit=0.05),
+              P("survival", "barrel", (1.25, -0.2), 0, 0, 1.2)]
     if t >= 2:
-        parts += [P("survival", "box-large", (0.35, -0.35), 0, 0, s), P("survival", "box-large", (-0.35, 0.35), 0, 0, s)]
-    if t >= 3:
-        parts += [P("survival", "box-large", (0, 0), "top", 0, s), P("survival", "resource-stone-large", (-0.7, 0.75), 0, 0, 1.4)]
-    return {"size": 3, "fill": 0.88, "parts": parts}
+        parts.append(P("town", "cart", (-1.2, -0.3), 0, 80, 0.9))
+    return {"size": 3, "fill": 0.92, "roof": "red", "parts": parts}
 
 
 def aether_store(t):
-    parts = [P("town", "fountain-square-detail"), P("td", "detail-crystal-large", (0, 0), 0.15, 0, 1.4 + 0.3 * t)]
+    """Эфирный резервуар: каменная ротонда с кристаллами под синей кровлей."""
+    parts = [P("castle", "tower-hexagon-base", (0, 0.1), 0, 0, 1.25),
+             T("td", "detail-crystal-large", (0, 0.1), "top", 0, 1.5 + 0.3 * t, tint=AETHER, emit=0.5)]
+    parts += [T("td", "detail-crystal", p, 0, r, 1.1, tint=AETHER, emit=0.45) for p, r in (((0.9, -0.8), 20), ((-0.9, -0.7), 80))]
     if t >= 2:
-        parts.append(P("td", "detail-crystal", (0.4, -0.3), 0.15, 30, 1.3))
+        parts += [P("town", "pillar-stone", p, 0, 0, 1.2) for p in ((1.2, 0.0), (0.0, -1.2))]
     if t >= 3:
-        parts.append(P("td", "detail-crystal", (-0.35, 0.35), 0.15, 70, 1.3))
-    return {"size": 3, "fill": 0.9, "parts": parts, "glow": [{"h": 0.45, "r": 0.06, "color": AETHER, "strength": 6, "light": 40 + 15 * t}]}
+        parts += [P("town", "lantern", p, 0, 0, 0.7) for p in ((1.25, -1.2), (-1.25, -1.2))]
+    return {"size": 3, "fill": 0.9, "roof": "blue", "parts": parts,
+            "glow": [{"h": 0.6, "r": 0.06, "color": AETHER, "strength": 8, "light": 60 + 20 * t}]}
 
 
 def barracks(t):
-    parts = {1: house(1, 2, 1), 2: house(2, 2, 1), 3: house(2, 2, 2)}[t]
-    if t >= 2:
-        parts = parts + [P("castle", "flag-banner-long", (1.15, -1.15))]
-    return {"size": 3, "fill": 0.9, "parts": parts}
+    """Казарма: двухэтажный фахверк, знамя, стойка с оружием, соломенное чучело."""
+    parts = townhouse(2, 1 if t == 1 else 2, 1 if t == 1 else 2, (0.0, 0.3), banner=True, chimney=t >= 2)
+    parts += [P("survival", "barrel", (1.25, -0.75), 0, 0, 1.2), P("survival", "box", (0.85, -1.1), 0, 30, 1.2),
+              P("town", "pillar-wood", (-0.9, -1.0), 0, 0, 0.9)]
+    if t >= 3:
+        parts += turret((1.3, 1.1)) + [P("castle", "flag-banner-long", (-1.2, -1.2), 0, 0, 1.0)]
+    return {"size": 3, "fill": 0.92, "roof": "red", "parts": parts}
 
 
 def camp(t):
-    parts = [P("survival", "tent-canvas", (0.25, 0.3), 0, 200, 2.2), P("survival", "campfire-pit", (-0.35, -0.4), 0, 0, 1.8)]
+    """Лагерь: цветные шатры, костёр, знамёна, бревна для сидения."""
+    parts = [T("survival", "tent-canvas", (0.3, 0.35), 0, 200, 2.1, tint=(0.75, 0.2, 0.15)),
+             P("survival", "campfire-pit", (-0.35, -0.4), 0, 0, 1.7), P("nature", "log", (-0.95, -0.35), 0, 80, 0.8),
+             P("castle", "flag", (-1.15, -1.15), 0, 0, 0.9)]
     if t >= 2:
-        parts.append(P("survival", "tent-canvas", (-0.45, 0.45), 0, 140, 1.8))
+        parts.append(T("survival", "tent-canvas", (-0.5, 0.5), 0, 140, 1.8, tint=(0.2, 0.35, 0.8)))
     if t >= 3:
-        parts += [P("survival", "tent-canvas", (0.5, -0.4), 0, 250, 1.7), P("castle", "flag", (-0.8, -0.8), 0, 0, 0.9)]
-    return {"size": 3, "fill": 0.92, "parts": parts,
+        parts += [T("survival", "tent-canvas", (0.6, -0.45), 0, 250, 1.7, tint=(0.9, 0.75, 0.35)), P("castle", "flag", (1.1, 1.1), 0, 0, 0.9)]
+    return {"size": 3, "fill": 0.92, "roof": "red", "parts": parts,
             "glow": [{"h": 0.06, "r": 0.04, "x": -0.35, "y": -0.35, "color": WARM, "strength": 15, "light": 30}]}
 
 
 def workshop(t):
-    parts = [P("survival", "structure-roof" if t >= 2 else "structure", (0, 0.25), 0, 0, 1.5),
-             P("survival", "workbench-anvil", (0.45, -0.45), 0, 30, 1.6), P("survival", "workbench", (-0.45, -0.4), 0, 0, 1.4),
-             P("survival", "barrel", (0.75, 0.55), 0, 0, 1.2)]
+    """Кузница: каменная мастерская под сланцем, две трубы, наковальня и горн у входа."""
+    parts = townhouse(2, 2, 1 + (t >= 2), (0.15, 0.3), chimney=True, door=True)
+    parts += [P("town", "chimney", (0.65, 0.8), 1.0 + (t >= 2) - 0.2, 0, 1.0),
+              P("survival", "workbench-anvil", (0.95, -1.0), 0, 30, 1.4), P("survival", "barrel", (-0.9, -0.95), 0, 0, 1.2),
+              P("survival", "workbench", (-0.25, -1.15), 0, 0, 1.1)]
     if t >= 3:
-        parts += [P("castle", "flag-banner-short", (-0.8, 0.7), 0, 0, 0.9), P("survival", "tool-hammer-upgraded", (0.2, -0.85), 0, 60, 1.4)]
-    return {"size": 3, "fill": 0.9, "parts": parts,
-            "glow": [{"h": 0.25, "r": 0.04, "x": 0.45, "y": -0.45, "color": WARM, "strength": 10, "light": 25}]}
+        parts += [P("town", "banner-red", (1.15, -0.2), 0.6, 0, 1.0), P("survival", "tool-hammer-upgraded", (0.5, -1.25), 0, 60, 1.3)]
+    return {"size": 3, "fill": 0.92, "roof": "slate", "parts": parts,
+            "glow": [{"h": 0.18, "r": 0.04, "x": 0.95, "y": -1.0, "color": WARM, "strength": 12, "light": 30}]}
 
 
 def trap(t):
@@ -188,7 +270,8 @@ GEN = {"workshop": workshop, "trap": trap, "lantern": lantern, "beacon": beacon,
        "barracks": barracks, "camp": camp}
 
 BUILDINGS = {f"{name}_t{t}": fn(t) for name, fn in GEN.items() for t in (1, 2, 3)}
-BUILDINGS["builderHut_t1"] = {"size": 2, "fill": 0.9, "parts": house(1, 1, 1, roof="roof-point") + [P("survival", "workbench-anvil", (0.95, -0.2), scale=0.7)]}
+BUILDINGS["builderHut_t1"] = {"size": 2, "fill": 0.9, "roof": "blue", "parts": townhouse(1, 1, 1, (0.0, 0.15), roof="roof-point")
+                              + [P("survival", "workbench", (0.75, -0.55), 0, 0, 0.8), P("nature", "log_stack", (-0.6, -0.65), 0, 30, 0.6)]}
 
 # Декор вокруг карты: деревья, скалы, кусты (рендерятся как постройки 1-2 клетки).
 DECOR = {
@@ -259,14 +342,6 @@ UNITS = {
 ORE = (0.95, 0.42, 0.1)
 GOLD = (1.0, 0.68, 0.1)
 CYAN = (0.15, 0.72, 1.0)
-
-
-def T(kit, model, at=(0, 0), z=0, rot=0, scale=1.0, tint=None, emit=0.0):
-    d = P(kit, model, at, z, rot, scale)
-    if tint:
-        d["tint"] = tint
-        d["emit"] = emit
-    return d
 
 
 ICONS = {
