@@ -13,22 +13,11 @@ using gfx::rgba;
 namespace {
 constexpr float kSqrt2 = 1.41421356f;
 
-struct UnitAnims { const char* move; const char* attack; };
-UnitAnims animsFor(lf::TroopType t) {
-    switch (t) {
-        case lf::TroopType::Torch: return {"walk", "attack-melee-right"};
-        case lf::TroopType::Archer: return {"walk", "holding-right-shoot"};
-        case lf::TroopType::Shield: return {"walk", "attack-melee-left"};
-        case lf::TroopType::Sapper: return {"sprint", "interact-right"};
-        case lf::TroopType::Shade: return {"sprint", "attack-melee-right"};
-        case lf::TroopType::Owl: return {"fall", "holding-both-shoot"};
-        case lf::TroopType::Morok: return {"walk", "attack-melee-right"};
-        case lf::TroopType::Brute: return {"walk", "attack-melee-right"};
-        case lf::TroopType::Leech: return {"sprint", "attack-melee-left"};
-        case lf::TroopType::Wraith: return {"fall", "holding-both-shoot"};
-        default: return {"walk", "walk"};
-    }
-}
+// Свет на карте (кэш последнего drawFog): 0 — тьма, 1 — полный свет.
+constexpr int kLM = lf::kGrid + 2 * kPad + 1;
+float gLight[kLM * kLM];
+float gDark = 0.74f;
+bool gLightValid = false;
 
 uint32_t hash2(int x, int y) {
     uint32_t h = (uint32_t)x * 374761393u + (uint32_t)y * 668265263u;
@@ -75,6 +64,19 @@ const atlas::Sprite* buildingSprite(lf::BType type, int level) {
         if (const atlas::Sprite* s = atlas::get(std::string("b/") + def.id + "_t" + std::to_string(t))) return s;
     return atlas::get(std::string("b/") + def.id);
 }
+
+namespace {
+// Поворотная часть (Арбалет, Катапульта): спрайты _d0.._d7 — поворот на 45° против часовой (вид сверху в Blender).
+// kTurretBase — угол в Blender, куда смотрит _d0; мировой угол a соответствует углу -a в Blender.
+constexpr float kTurretBase = 0.f;
+const atlas::Sprite* turretSprite(lf::BType type, int level, float angle) {
+    const auto& def = lf::B(type);
+    int tier = std::clamp((level - 1) * 3 / std::max(1, def.maxLevel) + 1, 1, 3);
+    float deg = -angle * 57.2958f - kTurretBase;
+    int d = ((int)std::lround(deg / 45.f) % 8 + 8) % 8;
+    return atlas::get(std::string("b/") + def.id + "_t" + std::to_string(tier) + "_d" + std::to_string(d));
+}
+}  // namespace
 
 void drawGround(const Camera& cam) {
     const float s = cam.zoom * 0.5f;
@@ -184,6 +186,9 @@ void drawFog(const Camera& cam, const std::vector<lf::LightSource>& src, const s
             }
             L[jj * N + ii] = best;
         }
+    std::copy(L, L + N * N, gLight);
+    gDark = darkness;
+    gLightValid = true;
     const uint32_t fog = rgba(14, 9, 30), red = rgba(150, 20, 30);
     for (int jj = 0; jj < M; jj++)
         for (int ii = 0; ii < M; ii++) {
@@ -205,7 +210,56 @@ void drawFog(const Camera& cam, const std::vector<lf::LightSource>& src, const s
         float flick = 1 + std::sin(t * 3 + s.x) * 0.015f;
         float rx = s.r * kTW * cam.zoom / kSqrt2 * flick;
         ellipseSprite("fx/glow", p.x, p.y, rx, rx / 2, rgba(255, 170, 70, 46), true);
+        ellipseSprite("fx/glow", p.x, p.y, rx * 0.35f, rx * 0.175f, rgba(255, 200, 120, (int)(40 + 14 * std::sin(t * 7 + s.y))), true);
     }
+    // клубы Мглы медленно ползут по тёмным участкам
+    const float W = lf::kGrid + 2.f * kPad;
+    for (int i = 0; i < 34; i++) {
+        uint32_t h = hash2(i * 31 + 7, i * 17 + 3);
+        float bx = (h % 1000) / 1000.f * W, by = ((h >> 10) % 1000) / 1000.f * W - kPad;
+        float wx = std::fmod(bx + t * (0.12f + (h >> 24) % 5 * 0.03f), W) - kPad;
+        float wy = by + std::sin(t * 0.07f + i * 1.7f) * 2.5f;
+        float a = (1 - lightAt(wx, wy)) * darkness * 0.42f * std::min(1.f, std::min(wx + kPad, W - kPad - wx) / 3.f);
+        if (a < 0.02f) continue;
+        Vec2 p = cam.toScreen(wx, wy, 8);
+        float r = (2.2f + (h >> 20) % 4 * 0.6f) * kTW * cam.zoom / 2;
+        if (p.x < -r || p.x > cam.w + r || p.y < -r || p.y > cam.h + r) continue;
+        ellipseSprite("fx/soft", p.x, p.y, r, r * 0.42f, rgba(60, 40, 110, (int)(255 * a)));
+    }
+}
+
+void glowSpot(float x, float y, float r, uint32_t color) { glowAt(x, y, r, color); }
+
+void updateParticles(std::vector<Particle>& ps, float dt) {
+    for (auto& p : ps) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt;
+        if (p.chunk) {
+            p.vz -= 520 * dt;
+            if (p.z < 0) { p.z = 0; p.vz = -p.vz * 0.3f; p.vx *= 0.5f; p.vy *= 0.5f; }
+        }
+        p.life -= dt;
+    }
+    ps.erase(std::remove_if(ps.begin(), ps.end(), [](const Particle& p) { return p.life <= 0; }), ps.end());
+}
+
+float lightAt(float x, float y) {
+    if (!gLightValid) return 1.f;
+    float fx = std::clamp(x + kPad, 0.f, (float)(kLM - 1.001f)), fy = std::clamp(y + kPad, 0.f, (float)(kLM - 1.001f));
+    int i = (int)fx, j = (int)fy;
+    float u = fx - i, v = fy - j;
+    float a = gLight[j * kLM + i], b = gLight[j * kLM + i + 1], c = gLight[(j + 1) * kLM + i], d = gLight[(j + 1) * kLM + i + 1];
+    return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+
+uint32_t lightTint(float x, float y, uint32_t base) {
+    // во тьме — холодный лунный оттенок, у огня — чуть тёплый
+    float l = lightAt(x, y), k = gDark * (1 - l) * 0.85f;
+    float r = 1 - k * 0.62f, g = 1 - k * 0.64f, bl = 1 - k * 0.38f;
+    if (l > 0.5f) { float w = (l - 0.5f) * 0.12f; r = std::min(1.f, r + w); bl -= w; }
+    auto ch = [](uint32_t c, int sh, float m) { return (uint32_t)std::clamp((float)((c >> sh) & 255) * m, 0.f, 255.f); };
+    return ch(base, 0, r) | ch(base, 8, g) << 8 | ch(base, 16, bl) << 16 | (base & 0xff000000u);
 }
 
 void drawFootprint(const Camera& cam, float x, float y, float size, uint32_t color) {
@@ -230,20 +284,35 @@ void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level
         float pulse = 0.5f + 0.5f * std::sin(t * 5);
         drawFootprint(cam, x - 0.15f, y - 0.15f, s + 0.3f, rgba(255, 230, 120, (int)(50 + 50 * pulse)));
     }
+    const atlas::Sprite* sp = buildingSprite(type, level);
+    if (const atlas::Sprite* ts = turretSprite(type, level, look.angle)) sp = ts;
     if (look.dead) {
         drawFootprint(cam, x + 0.1f, y + 0.1f, s - 0.2f, rgba(30, 24, 30, 150));
         uint32_t h = hash2((int)x * 7, (int)y * 13);
-        for (int k = 0; k < (int)s * 3; k++) {
+        float appear = look.collapse < 0 ? 1.f : std::clamp(look.collapse * 1.6f, 0.f, 1.f);
+        for (int k = 0; k < (int)s * 4; k++) {
             float px = x + 0.3f + ((h >> (k % 16)) & 7) / 7.f * (s - 0.6f);
             float py = y + 0.3f + ((h >> ((k * 3) % 16)) & 7) / 7.f * (s - 0.6f);
             Vec2 p = cam.toScreen(px, py, 3);
-            ellipseSprite("fx/soft", p.x, p.y, 7 * cam.zoom, 4 * cam.zoom, k % 2 ? rgba(70, 64, 72, 230) : rgba(90, 70, 56, 230));
+            float r = (5 + ((h >> (k % 11)) & 3) * 1.5f) * cam.zoom * appear;
+            ellipseSprite("fx/soft", p.x, p.y, r * 1.3f, r * 0.8f, lightTint(px, py, k % 2 ? rgba(70, 64, 72, 235) : rgba(96, 74, 58, 235)));
+        }
+        // обрушение: здание уходит в землю, сплющиваясь и темнея
+        if (sp && look.collapse >= 0 && look.collapse < 1) {
+            float k = look.collapse, e = k * k;
+            float sc = cam.zoom * 0.5f;
+            float w = sp->w * sc, hh = sp->h * sc * (1 - e * 0.75f);
+            float jx = std::sin(k * 70) * 3 * (1 - k) * cam.zoom;
+            float bx = c.x - sp->px * sc + jx, by = c.y - sp->py * sc * (1 - e * 0.75f) + e * 10 * cam.zoom;
+            int v = (int)(255 * (1 - k * 0.6f));
+            atlas::drawRect(sp, bx, by, w, hh, lightTint(x + s / 2, y + s / 2, rgba(v, v, v, (int)(255 * (1 - e)))));
         }
         return;
     }
-    const atlas::Sprite* sp = buildingSprite(type, level);
     float dim = look.dim * (look.constructing ? 0.7f : 1.f);
     uint32_t col = rgba((int)(255 * dim), (int)(255 * dim), (int)(255 * std::min(1.f, dim * 1.08f)), (int)(255 * look.alpha * (look.constructing ? 0.75f : 1)));
+    if (!look.ghost) col = lightTint(x + s / 2, y + s / 2, col);
+    if (look.hitFlash > 0) c.x += std::sin(t * 90) * look.hitFlash * 6 * cam.zoom;
     if (sp) {
         atlas::draw(sp, c.x, c.y, cam.zoom * 0.5f, col);
     } else {
@@ -261,15 +330,22 @@ void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level
     }
 }
 
-const char* moveAnim(lf::TroopType t) { return animsFor(t).move; }
-
-void drawUnit(const Camera& cam, const std::string& unit, const std::string& anim, float angle, int frame, float x, float y, float alpha) {
+namespace {
+// Спрайт юнита: anim — move (8 кадров), attack (6), idle (4), die (5).
+const atlas::Sprite* unitSprite(const std::string& unit, const char* anim, float angle, int frame) {
     float deg = angle * 57.2958f;
     int dir = ((int)std::lround((deg - 45.f) / 45.f) % 8 + 8) % 8;
-    const atlas::Sprite* sp = atlas::get("u/" + unit + "/" + anim + "_" + std::to_string(dir) + "_" + std::to_string(frame));
+    std::string name = "u/" + unit + "/" + anim + "_" + std::to_string(dir) + "_" + std::to_string(frame);
+    if (const atlas::Sprite* sp = atlas::get(name)) return sp;
+    return atlas::get("u/" + unit + "/move_" + std::to_string(dir) + "_0");
+}
+}  // namespace
+
+void drawUnit(const Camera& cam, const std::string& unit, const std::string& anim, float angle, int frame, float x, float y, float alpha) {
+    const atlas::Sprite* sp = unitSprite(unit, anim.c_str(), angle, frame);
     if (!sp) return;
     Vec2 p = cam.toScreen(x, y);
-    atlas::draw(sp, p.x, p.y, cam.zoom * 0.5f, rgba(255, 255, 255, (int)(255 * alpha)));
+    atlas::draw(sp, p.x, p.y, cam.zoom * 0.5f, lightTint(x, y, rgba(255, 255, 255, (int)(255 * alpha))));
 }
 
 void drawParticle(const Camera& cam, const Particle& p) {
@@ -278,35 +354,41 @@ void drawParticle(const Camera& cam, const Particle& p) {
     float r = p.size * cam.zoom * (p.additive ? 1.f : (1.6f - 0.6f * k));
     uint32_t c = gfx::withAlpha(p.color, std::min(1.f, k * 2.f) * ((p.color >> 24) & 255) / 255.f);
     if (p.additive) glowAt(s.x, s.y, r, c);
-    else ellipseSprite("fx/soft", s.x, s.y, r, r, c);
+    else ellipseSprite(p.chunk ? "fx/dot" : "fx/soft", s.x, s.y, r, p.chunk ? r * 0.8f : r, c);
 }
 
-void drawTroop(const Camera& cam, const lf::BTroop& tr, float t) {
+void drawTroop(const Camera& cam, const lf::BTroop& tr, float t, float deadT) {
     float lift = tr.air ? 46 + std::sin(t * 4 + tr.bob) * 4 : 0;
+    if (deadT >= 0 && tr.air) lift *= std::max(0.f, 1 - deadT * 2.5f);  // летуны падают
     Vec2 g = cam.toScreen(tr.x, tr.y);
     Vec2 p = cam.toScreen(tr.x, tr.y, lift);
     float alpha = tr.hidden ? 0.4f : 1.f;
-    if (tr.air) ellipseSprite("fx/shadow", g.x, g.y, 12 * cam.zoom, 6 * cam.zoom, rgba(0, 0, 0, 90));
-    auto an = animsFor(tr.type);
-    // направление спрайта: d=0 смотрит в мировой угол 45°, далее +45° на шаг
-    float deg = tr.angle * 57.2958f;
-    int dir = ((int)std::lround((deg - 45.f) / 45.f) % 8 + 8) % 8;
-    std::string name;
-    if (tr.attacking) {
-        int f = tr.def->cd > 0 ? (tr.cd > tr.def->cd * 0.5f ? 1 : 0) : 0;
-        name = std::string("u/") + tr.def->id + "/" + an.attack + "_" + std::to_string(dir) + "_" + std::to_string(f);
+    if (deadT >= 0) alpha *= std::clamp(1.f - (deadT - 1.6f) / 1.2f, 0.f, 1.f);
+    if (alpha <= 0) return;
+    if (tr.air && deadT < 0) ellipseSprite("fx/shadow", g.x, g.y, 12 * cam.zoom, 6 * cam.zoom, rgba(0, 0, 0, 90));
+    const char* anim;
+    int f;
+    if (deadT >= 0) {
+        anim = "die";
+        f = std::min(4, (int)(deadT * 10));
+    } else if (tr.attacking) {
+        // удар (середина анимации) совпадает с моментом, когда перезарядка сбрасывается
+        float ph = tr.def->cd > 0 ? 1 - tr.cd / tr.def->cd : 0;
+        anim = "attack";
+        f = (int)(std::fmod(ph + 0.5f, 1.f) * 6) % 6;
     } else {
-        int f = (int)(tr.animT * 8 * tr.def->speed / 1.5f + tr.bob) % 4;
-        name = std::string("u/") + tr.def->id + "/" + an.move + "_" + std::to_string(dir) + "_" + std::to_string(f);
+        anim = "move";
+        f = (int)(tr.animT * 12 * tr.def->speed / 1.5f + tr.bob * 4) % 8;
     }
-    const atlas::Sprite* sp = atlas::get(name);
-    uint32_t col = rgba(255, 255, 255, (int)(255 * alpha));
+    const atlas::Sprite* sp = unitSprite(tr.def->id, anim, tr.angle, f);
+    uint32_t col = lightTint(tr.x, tr.y, rgba(255, 255, 255, (int)(255 * alpha)));
     if (tr.def->haze) {
         glowAt(p.x, p.y - 14 * cam.zoom, 22 * cam.zoom, rgba(150, 90, 220, (int)(60 * alpha)));
         col = rgba(190, 170, 230, (int)(235 * alpha));
     }
     if (sp) atlas::draw(sp, p.x, p.y, cam.zoom * 0.5f, col);
     else ellipseSprite("fx/soft", p.x, p.y - 8 * cam.zoom, 8 * cam.zoom, 10 * cam.zoom, tr.def->color);
+    if (deadT >= 0) return;
     if (tr.hitT > 0 && sp) {
         gfx::setBlend(gfx::Blend::Add);
         atlas::draw(sp, p.x, p.y, cam.zoom * 0.5f, rgba(255, 120, 120, 160));
@@ -405,6 +487,27 @@ void drawEffect(const Camera& cam, const lf::Effect& e, float t) {
     (void)t;
 }
 
+void drawSpellZone(const Camera& cam, const lf::SpellZone& z, float battleTime, float t) {
+    float left = z.until - battleTime;
+    float fade = std::clamp(left / 0.6f, 0.f, 1.f) * std::clamp((lf::kSpellDuration - left) / 0.3f, 0.f, 1.f);
+    bool heal = z.kind == lf::Spell::Heal;
+    uint32_t rim = heal ? rgba(140, 255, 150) : rgba(255, 90, 80), fill = heal ? rgba(90, 230, 110) : rgba(230, 50, 60);
+    Vec2 p = cam.toScreen(z.x, z.y);
+    float rx = z.r * kTW * cam.zoom / kSqrt2;
+    float pulse = 1 + std::sin(t * 6) * 0.03f;
+    ellipseSprite("fx/glow", p.x, p.y, rx * pulse, rx / 2 * pulse, gfx::withAlpha(fill, 0.35f * fade), true);
+    ellipseSprite("fx/ring", p.x, p.y, rx, rx / 2, gfx::withAlpha(rim, 0.9f * fade));
+    ellipseSprite("fx/ring", p.x, p.y, rx * 0.7f, rx * 0.35f, gfx::withAlpha(rim, 0.35f * fade));
+    // поднимающиеся искры
+    for (int i = 0; i < 14; i++) {
+        uint32_t h = hash2(i * 13 + (int)(z.x * 10), i * 7 + (int)(z.y * 10));
+        float a = (h % 628) / 100.f, r = ((h >> 10) % 100) / 100.f * z.r * 0.9f;
+        float ph = std::fmod(t * 0.7f + (h >> 20) % 100 / 100.f, 1.f);
+        Vec2 q = cam.toScreen(z.x + std::cos(a) * r, z.y + std::sin(a) * r, ph * 60);
+        glowAt(q.x, q.y, (heal ? 6 : 7) * cam.zoom + 2, gfx::withAlpha(rim, (1 - ph) * fade));
+    }
+}
+
 void drawBuildingThumb(lf::BType type, float cx, float cy, float maxW, float maxH, int level) {
     const atlas::Sprite* sp = buildingSprite(type, level);
     if (!sp) return;
@@ -413,8 +516,7 @@ void drawBuildingThumb(lf::BType type, float cx, float cy, float maxW, float max
 }
 
 void drawTroopThumb(lf::TroopType type, float cx, float cy, float size) {
-    auto an = animsFor(type);
-    const atlas::Sprite* sp = atlas::get(std::string("u/") + lf::T(type).id + "/" + an.move + "_0_0");
+    const atlas::Sprite* sp = unitSprite(lf::T(type).id, "idle", 0.785f, 0);
     if (!sp) return;
     float k = size / std::max(sp->w, sp->h);
     atlas::drawRect(sp, cx - sp->w * k / 2, cy - sp->h * k / 2, sp->w * k, sp->h * k);

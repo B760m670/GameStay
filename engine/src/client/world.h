@@ -22,6 +22,9 @@ struct Decor { const char* sprite; float x, y; int size; float depth; };
 // Лес и скалы за краем поля (сортируются вместе с постройками по глубине).
 const std::vector<Decor>& decor();
 void drawDecor(const Camera& cam, const Decor& d);
+// Освещённость точки мира по последнему drawFog (0 — тьма, 1 — свет) и цвет base, затенённый по ней.
+float lightAt(float x, float y);
+uint32_t lightTint(float x, float y, uint32_t base);
 // Туман: темнота везде, кроме кругов света. Плюс тёплое свечение источников.
 void drawFog(const Camera& cam, const std::vector<lf::LightSource>& src, const std::vector<lf::Eclipse>& ecl, float t,
              float darkness = 0.74f, bool forbidTint = false);
@@ -31,22 +34,29 @@ struct BuildingLook {
     bool selected = false, dead = false, unpowered = false, constructing = false;
     int ghost = 0;                 // 1 — можно поставить, -1 — нельзя
     float hitFlash = 0;
+    float collapse = -1;           // 0..1 — идёт обрушение разрушенной постройки
+    float angle = 0.785f;          // куда смотрит поворотная часть (мировой угол), по умолчанию — к зрителю
 };
 void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level, const BuildingLook& look, float t);
 void drawFootprint(const Camera& cam, float x, float y, float size, uint32_t color);
 void drawBarAt(const Camera& cam, float wx, float wy, float z, float frac, uint32_t color, float width = 40);
 
-void drawTroop(const Camera& cam, const lf::BTroop& tr, float t);
+// deadT >= 0 — сколько секунд назад юнит погиб (анимация смерти, затем тело тает).
+void drawTroop(const Camera& cam, const lf::BTroop& tr, float t, float deadT = -1);
 // Персонаж вне боя (жители, рабочие, войска у лагеря): unit — имя набора спрайтов, angle — мировой угол.
 void drawUnit(const Camera& cam, const std::string& unit, const std::string& anim, float angle, int frame, float x, float y, float alpha = 1.f);
-const char* moveAnim(lf::TroopType t);
 
-// Простые частицы: искры, дым, блики, светлячки.
-struct Particle { float x, y, z, vx, vy, vz, life, max, size; uint32_t color; bool additive; };
+// Частицы: искры, дым, блики, светлячки, пыль, обломки (chunk — твёрдый кусок, падает под гравитацией).
+struct Particle { float x, y, z, vx, vy, vz, life, max, size; uint32_t color; bool additive; bool chunk = false; };
+void updateParticles(std::vector<Particle>& ps, float dt);
 void drawParticle(const Camera& cam, const Particle& p);
+// Мягкое аддитивное свечение в экранных координатах.
+void glowSpot(float x, float y, float r, uint32_t color);
 void drawProjectile(const Camera& cam, const lf::Projectile& p);
 void drawBeam(const Camera& cam, const lf::BBuilding& b, const lf::BTroop& tr);
 void drawEffect(const Camera& cam, const lf::Effect& e, float t);
+// Зона заклинания на земле: кольцо, свечение, искры.
+void drawSpellZone(const Camera& cam, const lf::SpellZone& z, float battleTime, float t);
 
 // Иконка-миниатюра постройки/юнита для UI.
 void drawBuildingThumb(lf::BType type, float cx, float cy, float maxW, float maxH, int level = 1);

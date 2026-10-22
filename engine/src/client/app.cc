@@ -39,6 +39,7 @@ long long App::now() const { return platform::nowMs(); }
 static std::string savePath() { return platform::saveDir() + "/lanternfall.sav"; }
 
 void App::init() {
+    splash = gfx::loadTexture(platform::assetDir() + "/art/splash.jpg", true);
     std::vector<unsigned char> data;
     bool loaded = false;
     if (platform::readFile(savePath(), data)) loaded = lf::village::load(std::string(data.begin(), data.end()), S);
@@ -119,12 +120,20 @@ bool App::drawDialogue() {
     float tx = bx + 22;
     bool named = sp.name && *sp.name;
     if (named) {
-        float r = 34;
-        atlas::drawRect(atlas::get("fx/dot"), bx + 20, by - 26, r * 2, r * 2, rgba(20, 12, 30));
-        atlas::drawRect(atlas::get("fx/dot"), bx + 24, by - 22, r * 2 - 8, r * 2 - 8, sp.color);
-        std::string initial = std::string(sp.name).substr(0, 2);  // первая буква в UTF-8 (кириллица — 2 байта)
-        font::draw(initial, bx + 20 + r, by - 26 + r - 15, 28, rgba(30, 20, 40), font::Center, false);
-        font::draw(sp.name, bx + 100, by + 10, 19, sp.color);
+        static const char* ids[] = {"", "portrait/vira", "portrait/keeper", "portrait/haze", "portrait/king"};
+        const atlas::Sprite* pic = atlas::get(ids[(int)line.who]);
+        float ps = std::min(150.f, by - 12);
+        if (pic) {
+            // портрет выезжает при смене говорящего
+            float k = dlgIdx > 0 && dlg[dlgIdx - 1].who == line.who ? 1.f : std::min(1.f, dlgT * 6);
+            float back = 1 + 2.70158f * (k - 1) * (k - 1) * (k - 1) + 1.70158f * (k - 1) * (k - 1);
+            gfx::pushScale(bx + 16 + ps / 2, by, back, 1);
+            atlas::drawRect(pic, bx + 16, by - ps + 30, ps, ps);
+            gfx::popScale();
+            font::draw(sp.name, bx + 30 + ps, by + 10, 19, sp.color);
+        } else {
+            font::draw(sp.name, bx + 22, by + 10, 19, sp.color);
+        }
         tx = bx + 22;
     }
     // печатная машинка
@@ -163,9 +172,16 @@ void App::frame(float dt, float width, float height) {
     if (focus.pending) { cam.focus(focus.x, focus.y, focus.r, focus.maxZ); focus.pending = false; }
     auto events = input::drain();
     auto world = ui::beginFrame(events);
-    if (!dlg.empty() || modal != Modal::None) world.clear();
+    if (!dlg.empty() || modal != Modal::None || title) world.clear();
     gfx::beginFrame(width, height);
     ui::setTime(t);
+    if (title && titleOut < 0) {  // пока заставка закрывает экран, мир не рисуем
+        drawTitle(dt);
+        ui::endFrame();
+        gfx::endFrame(rgba(13, 10, 28));
+        audio::update();
+        return;
+    }
     if (modal != shownModal) { if (modal != Modal::None) modalT = t; shownModal = modal; }
     if (scene == Scene::Village) villageFrame(dt, world);
     else battleFrame(dt, world);
@@ -174,17 +190,72 @@ void App::frame(float dt, float width, float height) {
         toast("Новый уровень " + std::to_string(S.level) + "!  +" + std::to_string(reward) + " осколков", gfx::rgba(255, 216, 107));
         audio::play("win", 0.7f);
         spawnFlyers(lf::Res::Shards, {cam.w / 2, cam.h / 2}, reward * 40);
+        if (S.level == lf::village::spellUnlockLevel(lf::Spell::Heal)) toast("Открыто заклинание «Исцеление» — лечит отряды в бою", gfx::rgba(160, 240, 140));
+        if (S.level == lf::village::spellUnlockLevel(lf::Spell::Rage)) toast("Открыто заклинание «Ярость» — отряды быстрее бегут и бьют", gfx::rgba(255, 150, 120));
         S.levelUps = 0;
         save();
     }
     drawFlyers(dt);
-    drawDialogue();
+    if (title) drawTitle(dt);
+    else drawDialogue();
     drawToasts(dt);
     ui::endFrame();
     gfx::endFrame(rgba(13, 10, 28));
     audio::update();
     saveT += dt;
     if (saveT > 5 && scene == Scene::Village) { saveT = 0; save(); }
+}
+
+// ---------- титульный экран ----------
+void App::drawTitle(float dt) {
+    float W = cam.w, H = cam.h;
+    float fade = titleOut < 0 ? 1.f : std::max(0.f, 1 - titleOut / 0.5f);
+    if (titleOut >= 0) { titleOut += dt; if (titleOut > 0.5f) { title = false; return; } }
+    ui::block({0, 0, W, H});
+    uint32_t white = rgba(255, 255, 255, (int)(255 * fade));
+    if (splash) {
+        // «эффект Кена Бёрнса»: медленный наезд на картину
+        float zoom = 1.04f + 0.04f * std::sin(t * 0.08f);
+        float k = std::max(W / splash->w, H / splash->h) * zoom;
+        float w = splash->w * k, h = splash->h * k;
+        gfx::rect(splash, W / 2 - w / 2 + std::sin(t * 0.05f) * 8, H / 2 - h / 2, w, h, 0, 0, 1, 1, white);
+    } else {
+        gfx::fillRect(0, 0, W, H, rgba(13, 10, 28, (int)(255 * fade)));
+    }
+    // угольки от Фонаря
+    if (embers.size() < 60) {
+        float x = W * (0.3f + (float)(std::rand() % 1000) / 2500.f);
+        embers.push_back({x, H * 0.65f, 0, ((std::rand() % 100) - 50) * 0.3f, -30.f - std::rand() % 40, 0, 3.f + (std::rand() % 100) / 50.f, 5.f, 3.f + std::rand() % 4,
+                          rgba(255, 180 + std::rand() % 50, 90, 220), true});
+    }
+    gfx::setBlend(gfx::Blend::Add);
+    for (auto& e : embers) {
+        e.life -= dt;
+        e.x += (e.vx + std::sin(t * 2 + e.size) * 10) * dt;
+        e.y += e.vy * dt;
+        float a = std::min(1.f, e.life / 1.5f) * fade;
+        atlas::drawRect(atlas::get("fx/glow"), e.x - e.size * 2, e.y - e.size * 2, e.size * 4, e.size * 4, gfx::withAlpha(e.color, a));
+    }
+    gfx::setBlend(gfx::Blend::Alpha);
+    embers.erase(std::remove_if(embers.begin(), embers.end(), [](const world::Particle& p) { return p.life <= 0; }), embers.end());
+    // затемнение сверху под заголовок
+    {
+        uint32_t top = rgba(8, 5, 20, (int)(170 * fade)), bot = rgba(8, 5, 20, 0);
+        gfx::Vtx v[4] = {{0, 0, 0, 0, top}, {W, 0, 1, 0, top}, {W, H * 0.42f, 1, 1, bot}, {0, H * 0.42f, 0, 1, bot}};
+        gfx::quad(gfx::white(), v);
+    }
+    float ty = H * 0.08f;
+    float pulse = 1 + 0.015f * std::sin(t * 2.2f);
+    gfx::pushScale(W / 2, ty + 34, pulse, fade);
+    font::draw("LANTERNFALL", W / 2, ty, 64, rgba(255, 216, 107), font::Center);
+    gfx::popScale();
+    font::draw("Пока горит Фонарь — Мгла не пройдёт", W / 2, ty + 78, 19, rgba(235, 225, 255, (int)(235 * fade)), font::Center);
+    float blink = 0.55f + 0.45f * std::sin(t * 3.5f);
+    font::draw("Нажми, чтобы начать", W / 2, H - safeB - 44, 22, rgba(255, 240, 200, (int)(255 * blink * fade)), font::Center);
+    if (titleOut < 0 && ui::tapped({0, 0, W, H})) {
+        titleOut = 0;
+        audio::play("open", 0.8f);
+    }
 }
 
 // ---------- запуск боёв ----------
@@ -207,6 +278,7 @@ void App::startMission(int idx) {
     o.army = armyMap(S);
     o.troopLevels = levelMap(S);
     o.eclipseCharges = lf::eclipseCharges(lf::village::lanternLevel(S));
+    o.spells = lf::village::spellCharges(S.level);
     o.seed = ms.seed;
     enterBattle(std::make_unique<lf::Battle>(o), BattleKind::Mission, ms.title, idx);
 }
@@ -221,6 +293,7 @@ void App::startRaid() {
     o.army = armyMap(S);
     o.troopLevels = levelMap(S);
     o.eclipseCharges = lf::eclipseCharges(LL);
+    o.spells = lf::village::spellCharges(S.level);
     o.seed = seed;
     std::string name = lf::basegen::rivalName(rng) + " · Фонарь " + std::to_string(eLL);
     enterBattle(std::make_unique<lf::Battle>(o), BattleKind::Raid, name);

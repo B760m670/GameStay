@@ -7,6 +7,7 @@
 
 #include "camera.h"
 #include "world.h"
+#include "engine/gfx.h"
 #include "engine/input.h"
 #include "engine/ui.h"
 #include "game/core.h"
@@ -45,6 +46,11 @@ struct BattleState {
     std::vector<std::pair<int, float>> flashes;  // клетка, время
     float warnT = 0;
     bool resultShown = false;
+    // зрелищность: время с гибели юнитов и построек, тряска камеры, обломки, анимация итогов
+    std::vector<float> troopDeadT, bDeadT;
+    float shake = 0, resultT = 0;
+    int starsShown = 0;
+    std::vector<world::Particle> parts;
     // итог
     lf::BattleResult res;
     long long gotOre = 0, gotAether = 0, gotShards = 0, lostOre = 0, lostAether = 0;
@@ -70,6 +76,7 @@ public:
     }
     Scene scene = Scene::Village;
     Modal modal = Modal::None;
+    bool title = true;  // титульный экран при запуске
 
 private:
     // общее
@@ -103,6 +110,12 @@ private:
     float emitT = 0;
     void updateLife(float dt);
     void drawWorkshop();
+
+    // титульный экран
+    const gfx::Texture* splash = nullptr;
+    float titleOut = -1;  // >= 0 — идёт растворение заставки
+    std::vector<world::Particle> embers;
+    void drawTitle(float dt);
 
     // диалоги
     std::vector<lf::Line> dlg;

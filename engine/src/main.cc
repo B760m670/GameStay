@@ -38,6 +38,7 @@ void init() {
     if (!opt.shot) audio::init(assets + "/sfx");
     app.init();
     if (!opt.keepDialogue && opt.shot) app.skipDialogue();
+    if (opt.shot && opt.scene != "title") app.title = false;
     if (opt.scene == "mission") app.startMission(0);
     else if (opt.scene == "raid") app.startRaid();
     else if (opt.scene == "night") app.startNight();

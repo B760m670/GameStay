@@ -19,8 +19,14 @@ constexpr long long kNightIntervalMs = 20LL * 60 * 1000;
 constexpr long long kFirstNightMs = 8LL * 60 * 1000;
 constexpr float kEclipseRadius = 3.5f;
 constexpr float kEclipseDuration = 10.f;
+// Заклинания атакующего: зона на земле на несколько секунд.
+enum class Spell { Heal, Rage };
+constexpr float kSpellRadius = 3.f;
+constexpr float kSpellDuration = 8.f;
+constexpr float kHealPerSec = 0.12f;  // доля здоровья в секунду
+constexpr float kRageMult = 1.6f;     // скорость и темп атак
 
-enum class BType { Lantern, Beacon, OreMine, AetherWell, OreStore, AetherStore, Barracks, Camp, BuilderHut, Ballista, Brazier, Catapult, Prism, Wall, Workshop, Count };
+enum class BType { Lantern, Beacon, OreMine, AetherWell, OreStore, AetherStore, Barracks, Camp, BuilderHut, Ballista, Brazier, Catapult, Prism, Wall, Workshop, Trap, Count };
 enum class Res { Ore, Aether, Shards, None };
 enum class TroopType { Torch, Archer, Shield, Sapper, Shade, Owl, Morok, Brute, Leech, Wraith, Count };
 enum class Target { Any, Defense, Light, Wall };
@@ -44,6 +50,7 @@ struct BuildingDef {
     Res produces = Res::None, stores = Res::None;
     float range = 0, minRange = 0, cd = 0, splash = 0, rampMax = 0, rampRate = 0, projSpeed = 0;
     bool ground = false, air = false, beam = false;
+    bool trap = false;  // скрытая ловушка: срабатывает один раз, не считается в разрушении
     Proj proj = Proj::None;
 
     bool isLight() const { return !light.empty(); }
@@ -93,6 +100,7 @@ private:
 
 struct LightSource { float x, y, r; int id; };
 struct Eclipse { float x, y, r, until; };
+struct SpellZone { Spell kind; float x, y, r, until; };
 
 float distToRect(float px, float py, float x, float y, float size);
 bool rectsOverlap(int ax, int ay, int as, int bx, int by, int bs);
@@ -215,6 +223,9 @@ bool nightDue(const VillageState& S, long long now);
 long long xpToNext(int level);
 int addXp(VillageState& S, long long amount);
 int levelReward(int level);
+// Заряды заклинаний в бою по уровню игрока: Исцеление с 3-го, Ярость с 5-го, второй заряд позже.
+std::map<Spell, int> spellCharges(int level);
+int spellUnlockLevel(Spell s);
 // Кузница: улучшение отрядов.
 constexpr int kMaxTroopLevel = 5;
 float troopMult(int level);  // множитель здоровья и урона
@@ -256,6 +267,8 @@ struct BBuilding {
     bool isDefense() const { return def->isDefense(); }
     bool isWall() const { return type == BType::Wall; }
     bool isLight() const { return def->isLight(); }
+    bool isTrap() const { return def->trap; }
+    bool isStructure() const { return !isWall() && !isTrap(); }  // то, что считается в проценте разрушения
 };
 
 struct BTroop {
@@ -281,7 +294,7 @@ struct Projectile {
 enum class Fx { Boom, Blast, Hit, Poof, Flame, EclipseFx, Rift };
 struct Effect { Fx kind; float x, y, sx = 0, sy = 0, life, max, r = 0; bool air = false; uint32_t color = 0; };
 
-enum class Ev { LightsOut, Lantern, Wave, EclipseCast, Destroyed, Shot, Hit, Deploy };
+enum class Ev { LightsOut, Lantern, Wave, EclipseCast, Destroyed, Shot, Hit, Deploy, SpellCast, Trap };
 struct BattleEvent { Ev kind; float x, y; BType type; };
 
 struct Wave { float t; std::map<TroopType, int> units; bool done = false; };
@@ -299,6 +312,7 @@ struct BattleOptions {
     std::map<TroopType, int> army;
     std::map<TroopType, int> troopLevels;  // уровни отрядов атакующего (1 по умолчанию)
     int eclipseCharges = 0;
+    std::map<Spell, int> spells;  // заряды заклинаний атакующего
     int seed = 1;
     float duration = kBattleTime;
     std::vector<Wave> waves;
@@ -312,6 +326,7 @@ public:
     bool canDeploy(float x, float y) const;
     bool deploy(TroopType t, float x, float y);
     bool castEclipse(float x, float y);
+    bool castSpell(Spell s, float x, float y);
     void finish();
     BattleResult simulate(float maxTime = 400.f, float dt = 1.f / 30.f);
     bool litAt(float x, float y) const;
@@ -328,6 +343,8 @@ public:
     std::vector<Projectile> projectiles;
     std::vector<Effect> effects;
     std::vector<Eclipse> eclipses;
+    std::vector<SpellZone> zones;
+    std::map<Spell, int> spells;
     std::vector<BattleEvent> events;
     int eclipseChargesLeft;
     std::map<TroopType, int> pool, used;
@@ -355,6 +372,7 @@ private:
     void updateTroop(int ti, float dt);
     bool canHit(const BBuilding& b, const BTroop& t) const;
     void updateDefense(int bi, float dt);
+    void updateTrap(int bi);
     void splashTroops(float x, float y, float r, float dmg, const BuildingDef* src);
     void updateProjectiles(float dt);
     void spawnWave(Wave& w);

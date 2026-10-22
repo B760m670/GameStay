@@ -141,6 +141,9 @@ def emission_material(name, color, strength):
     return m
 
 
+TURRETS = []  # корневые объекты поворотных частей последней собранной постройки
+
+
 def build(recipe, assets):
     """Собирает модель по рецепту, нормирует под размер клетки. Возвращает (объекты, высота в метрах)."""
     objs = []
@@ -153,6 +156,8 @@ def build(recipe, assets):
         if z == "top":
             z = top
         new = import_part(path, (x, y, z), p.get("rot", 0), p.get("scale", 1))
+        if p.get("turret"):
+            TURRETS.extend(o for o in new if o.parent is None)
         objs += new
         _, mx = bounds(new)
         top = max(top, mx.z)
@@ -214,12 +219,13 @@ def setup_camera(size_tiles, height_m, extra_w=0):
 
 def clean_alpha(path, floor=0.07):
     """Ловец теней оставляет почти прозрачную «подложку» по всему кадру — срезаем её."""
+    import numpy as np
     img = bpy.data.images.load(path)
-    px = list(img.pixels)
-    for i in range(3, len(px), 4):
-        a = px[i]
-        px[i] = 0.0 if a < floor else min(1.0, (a - floor) / (1 - floor))
-    img.pixels[:] = px
+    px = np.empty(len(img.pixels), dtype=np.float32)
+    img.pixels.foreach_get(px)
+    a = px[3::4]
+    px[3::4] = np.where(a < floor, 0.0, np.minimum(1.0, (a - floor) / (1 - floor)))
+    img.pixels.foreach_set(px)
     img.filepath_raw = path
     img.file_format = "PNG"
     img.save()
@@ -228,19 +234,213 @@ def clean_alpha(path, floor=0.07):
 
 def render_building(name, recipe, opts):
     sc = reset_scene(opts["samples"])
+    TURRETS.clear()
     objs, height = build(recipe, opts["assets"])
     cam, pivot = setup_camera(recipe["size"], height)
-    out = os.path.join(opts["out"], "buildings", name + ".png")
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    sc.render.filepath = out
-    bpy.ops.render.render(write_still=True)
-    clean_alpha(out)
+    os.makedirs(os.path.join(opts["out"], "buildings"), exist_ok=True)
     meta = {"size": recipe["size"], "pivot": [round(pivot[0], 1), round(pivot[1], 1)], "tilePx": TILE_PX,
             "w": sc.render.resolution_x, "h": sc.render.resolution_y}
-    with open(out.replace(".png", ".json"), "w") as f:
-        json.dump(meta, f)
+    # основной кадр + 8 направлений поворотной части (d — поворот на 45° против часовой, вид сверху)
+    variants = [("", 0)] + ([(f"_d{d}", d * 45) for d in range(8)] if TURRETS else [])
+    base_rot = [r.rotation_euler.z for r in TURRETS]
+    for suffix, deg in variants:
+        for r, b0 in zip(TURRETS, base_rot):
+            r.rotation_euler.z = b0 + math.radians(deg)
+        bpy.context.view_layer.update()
+        out = os.path.join(opts["out"], "buildings", name + suffix + ".png")
+        sc.render.filepath = out
+        bpy.ops.render.render(write_still=True)
+        clean_alpha(out)
+        with open(out.replace(".png", ".json"), "w") as f:
+            json.dump(meta, f)
     print(f"[sprites] {name}: {meta}")
 
+
+def pbr(name, color, metallic=0.0, rough=0.55, emit=0.0):
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    b = m.node_tree.nodes.get("Principled BSDF")
+    b.inputs["Base Color"].default_value = (*color, 1)
+    b.inputs["Metallic"].default_value = metallic
+    b.inputs["Roughness"].default_value = rough
+    if emit:
+        b.inputs["Emission Color"].default_value = (*color, 1)
+        b.inputs["Emission Strength"].default_value = emit
+    return m
+
+
+def _prim(kind, mat, loc=(0, 0, 0), scale=(1, 1, 1), rot=(0, 0, 0), **kw):
+    getattr(bpy.ops.mesh, "primitive_" + kind + "_add")(location=loc, rotation=rot, **kw)
+    o = bpy.context.active_object
+    o.scale = scale
+    o.data.materials.append(mat)
+    bpy.ops.object.shade_smooth() if kind in ("uv_sphere", "cylinder", "torus") else None
+    return o
+
+
+def _curve(points, radius, mat):
+    cd = bpy.data.curves.new("crv", "CURVE")
+    cd.dimensions = "3D"
+    cd.bevel_depth = radius
+    cd.bevel_resolution = 2
+    sp = cd.splines.new("POLY")
+    sp.points.add(len(points) - 1)
+    for i, p in enumerate(points):
+        sp.points[i].co = (*p, 1)
+    o = bpy.data.objects.new("crv", cd)
+    bpy.context.scene.collection.objects.link(o)
+    o.data.materials.append(mat)
+    return o
+
+
+METAL = (0.78, 0.8, 0.86)
+WOOD = (0.42, 0.26, 0.13)
+
+
+def make_item(kind, assets, color=None):
+    """Предмет в руку. Начало координат — точка хвата, предмет тянется вдоль +Z. Возвращает корневой объект."""
+    parts = []
+    if kind == "sword" or kind == "dagger":
+        L = 0.16 if kind == "sword" else 0.09
+        steel, hilt = pbr("Steel", METAL, 0.9, 0.25), pbr("Hilt", color or (0.55, 0.36, 0.12), 0.3, 0.5)
+        parts += [_prim("cube", steel, (0, 0, 0.03 + L / 2), (0.016, 0.005, L / 2)),
+                  _prim("cube", hilt, (0, 0, 0.026), (0.034, 0.008, 0.006)),
+                  _prim("cylinder", pbr("Grip", WOOD), (0, 0, 0), (0.008, 0.008, 0.024), vertices=8),
+                  _prim("uv_sphere", hilt, (0, 0, -0.026), (0.011, 0.011, 0.011), segments=8, ring_count=6)]
+    elif kind == "shield":
+        face = pbr("ShieldFace", color or (0.16, 0.32, 0.72), 0.1, 0.5)
+        rim = pbr("ShieldRim", (0.82, 0.62, 0.2), 0.85, 0.3)
+        parts += [_prim("cylinder", face, (0, 0, 0), (0.095, 0.095, 0.009), (math.pi / 2, 0, 0), vertices=24),
+                  _prim("torus", rim, (0, 0, 0), (1, 1, 1), (math.pi / 2, 0, 0), major_radius=0.095, minor_radius=0.009,
+                        major_segments=24, minor_segments=6),
+                  _prim("uv_sphere", rim, (0, -0.012, 0), (0.024, 0.016, 0.024), segments=10, ring_count=6)]
+    elif kind == "bow":
+        wood = pbr("Bow", (0.5, 0.3, 0.12), 0.0, 0.6)
+        pts = [(0.05 * (1 - math.cos(a)) * 1.2, 0, 0.17 * math.sin(a)) for a in [(-1 + 2 * i / 10) * 1.0 for i in range(11)]]
+        parts += [_curve([(x - 0.03, y, z) for x, y, z in pts], 0.012, wood),
+                  _curve([(pts[0][0] - 0.03, 0, pts[0][2]), (pts[-1][0] - 0.03, 0, pts[-1][2])], 0.0025, pbr("Str", (0.95, 0.92, 0.85)))]
+    elif kind in ("staff", "darkstaff"):
+        c = color or ((0.35, 0.85, 1.0) if kind == "staff" else (0.7, 0.3, 1.0))
+        parts += [_prim("cylinder", pbr("Staff", WOOD), (0, 0, 0.08), (0.009, 0.009, 0.2), vertices=8),
+                  _prim("uv_sphere", pbr("Orb", c, 0, 0.2, emit=2.5), (0, 0, 0.3), (0.03, 0.03, 0.03), segments=12, ring_count=8)]
+        ld = bpy.data.lights.new("OrbLight", "POINT")
+        ld.energy, ld.color, ld.shadow_soft_size = 4, c, 0.02
+        lo = bpy.data.objects.new("OrbLight", ld)
+        lo.location = (0, 0, 0.3)
+        bpy.context.scene.collection.objects.link(lo)
+        parts.append(lo)
+    elif kind == "lantern":
+        new = import_part(os.path.join(assets, recipes.KITS["grave"], "lantern-candle.glb"), (0, 0, 0), 0, 0.42)
+        for o in new:
+            if o.parent is None:
+                o.location.z -= 0.16
+        parts += [o for o in new if o.parent is None]
+        parts.append(_prim("uv_sphere", pbr("Flame", (1.0, 0.55, 0.15), 0, 0.3, emit=4), (0, 0, -0.085), (0.02, 0.02, 0.03), segments=8, ring_count=6))
+        ld = bpy.data.lights.new("LanternLight", "POINT")
+        ld.energy, ld.color, ld.shadow_soft_size = 6, (1.0, 0.6, 0.25), 0.02
+        lo = bpy.data.objects.new("LanternLight", ld)
+        lo.location = (0, 0, -0.085)
+        bpy.context.scene.collection.objects.link(lo)
+        parts.append(lo)
+    elif kind == "torch":
+        parts += [_prim("cylinder", pbr("TorchStick", WOOD), (0, 0, 0.05), (0.011, 0.011, 0.11), vertices=8),
+                  _prim("cylinder", pbr("TorchWrap", (0.3, 0.2, 0.12)), (0, 0, 0.15), (0.017, 0.017, 0.025), vertices=8),
+                  _prim("uv_sphere", pbr("TorchFire", (1.0, 0.45, 0.08), 0, 0.3, emit=3), (0, 0, 0.19), (0.026, 0.026, 0.04), segments=10, ring_count=6),
+                  _prim("uv_sphere", pbr("TorchCore", (1.0, 0.8, 0.3), 0, 0.3, emit=5), (0, 0, 0.18), (0.014, 0.014, 0.024), segments=8, ring_count=6)]
+        ld = bpy.data.lights.new("TorchLight", "POINT")
+        ld.energy, ld.color, ld.shadow_soft_size = 5, (1.0, 0.55, 0.2), 0.02
+        lo = bpy.data.objects.new("TorchLight", ld)
+        lo.location = (0, 0, 0.2)
+        bpy.context.scene.collection.objects.link(lo)
+        parts.append(lo)
+    elif kind == "bomb":
+        parts += [_prim("uv_sphere", pbr("Bomb", (0.08, 0.08, 0.1), 0.6, 0.35), (0, 0, 0.03), (0.045, 0.045, 0.045), segments=14, ring_count=8),
+                  _prim("cylinder", pbr("Fuse", (0.8, 0.7, 0.5)), (0, 0, 0.085), (0.005, 0.005, 0.015), vertices=6),
+                  _prim("uv_sphere", pbr("Spark", (1, 0.7, 0.2), 0, 0.3, emit=5), (0, 0, 0.1), (0.012, 0.012, 0.012), segments=6, ring_count=4)]
+    else:  # предмет из набора: "survival:tool-hammer"
+        kit, model = kind.split(":")
+        new = import_part(os.path.join(assets, recipes.KITS[kit], model + ".glb"), (0, 0, 0), 0, 1)
+        for o in new:
+            if o.parent is None:
+                o.location.z -= 0.03
+        parts += [o for o in new if o.parent is None]
+    root = bpy.data.objects.new("Item_" + kind, None)
+    bpy.context.scene.collection.objects.link(root)
+    for p in parts:
+        p.parent = root
+    return root
+
+
+def hand_pos(target, bone):
+    """Кисть в позе покоя: самые дальние от плеча вершины руки (кость скелета или жёсткая деталь)."""
+    pts = []
+    if target.type == "ARMATURE":
+        for o in target.children:
+            if o.type != "MESH" or bone not in o.vertex_groups:
+                continue
+            gi = o.vertex_groups[bone].index
+            for v in o.data.vertices:
+                if any(g.group == gi and g.weight > 0.5 for g in v.groups):
+                    pts.append(o.matrix_world @ v.co)
+    elif target.type == "MESH":
+        pts = [target.matrix_world @ v.co for v in target.data.vertices]
+    if not pts:
+        return Vector((-0.36 if "right" in bone else 0.36, -0.03, 0.27))
+    sign = -1 if "right" in bone else 1
+    ext = max(p.x * sign for p in pts)
+    near = [p for p in pts if p.x * sign > ext - 0.04]
+    c = sum(near, Vector()) / len(near)
+    return Vector((c.x - sign * 0.01, c.y, c.z))
+
+
+def attach_items(new, holds, assets):
+    """Вложить предметы в руки. Персонаж в позе покоя (Т-поза Kenney: руки в стороны, вперёд = -Y).
+    Скелетные персонажи — привязка к кости, «жёсткие» (кладбищенские) — к детали руки."""
+    from mathutils import Euler, Matrix
+    arm = next((o for o in new if o.type == "ARMATURE"), None)
+    if arm is not None:
+        arm.data.pose_position = "REST"
+    bpy.context.view_layer.update()
+    out = []
+    for h in holds:
+        bone = h.get("bone", "arm-right")
+        root = make_item(h["item"], assets, h.get("color"))
+        if arm is not None:
+            target = arm
+            root.parent = arm
+            root.parent_type = "BONE"
+            root.parent_bone = bone
+        else:
+            target = next(o for o in new if o.name.split(".")[0] == bone)
+            root.parent = target
+        bpy.context.view_layer.update()
+        rot = Euler([math.radians(v) for v in h.get("rot", (90, 0, 0))])
+        sc = h.get("scale", 1)
+        loc = Vector(h["loc"]) if "loc" in h else hand_pos(target, bone) + Vector(h.get("off", (0, 0, 0)))
+        root.matrix_world = Matrix.LocRotScale(loc, rot, Vector((sc, sc, sc)))
+        out.append(root)
+    if arm is not None:
+        arm.data.pose_position = "POSE"
+    bpy.context.view_layer.update()
+    return out
+
+
+def set_anim(new, src):
+    """Включить анимацию src. Возвращает (начало, конец) диапазона кадров или None."""
+    rng = None
+    for o in new:
+        if o.type == "ARMATURE":
+            act = next((a for a in bpy.data.actions if a.name.split("_")[0] == src), None)
+        else:
+            act = bpy.data.actions.get(src + "_" + o.name.split(".")[0])
+        if act is None:
+            continue
+        if o.animation_data is None:
+            o.animation_data_create()
+        o.animation_data.action = act
+        r = act.frame_range
+        rng = (min(rng[0], r[0]), max(rng[1], r[1])) if rng else (r[0], r[1])
+    return rng
 
 def render_unit(name, recipe, opts):
     """Юнит: 8 направлений × кадры анимаций. Модель импортируется один раз на направление."""
@@ -260,7 +460,8 @@ def render_unit(name, recipe, opts):
             new = [o for o in new if o not in stray]
             for o in stray:
                 bpy.data.objects.remove(o, do_unlink=True)
-            arm.animation_data_create()
+        set_anim(new, "static")
+        attach_items(new, recipe.get("hold", []), assets)
         roots = [o for o in new if o.parent is None]
         for r in roots:
             r.rotation_mode = "XYZ"
@@ -280,19 +481,18 @@ def render_unit(name, recipe, opts):
             r.location = (Vector(r.location) - Vector((0, 0, scale[1]))) * scale[0] + Vector((0, 0, recipe.get("lift", 0)))
         bpy.context.view_layer.update()
         cam, pivot = setup_camera(1, recipe["height"] * 1.15 + recipe.get("lift", 0))
-        for anim, frames in recipe["anims"].items():
-            act = next((a for a in bpy.data.actions if a.name.split("_")[0] == anim), None)
-            if arm is not None and act is not None:
-                arm.animation_data.action = act
+        for anim, (src, frames) in recipe["anims"].items():
+            rng = set_anim(new, src)
             for fi, frame in enumerate(frames):
-                if act is not None:
-                    sc.frame_set(int(act.frame_range[0] + (act.frame_range[1] - act.frame_range[0]) * frame))
+                if rng is not None:
+                    f = rng[0] + (rng[1] - rng[0]) * frame
+                    sc.frame_set(int(f), subframe=f - int(f))
                 out = os.path.join(out_dir, f"{anim}_{d}_{fi}.png")
                 sc.render.filepath = out
                 bpy.ops.render.render(write_still=True)
                 clean_alpha(out)
     with open(os.path.join(out_dir, "meta.json"), "w") as f:
-        json.dump({"pivot": [round(pivot[0], 1), round(pivot[1], 1)], "anims": {k: len(v) for k, v in recipe["anims"].items()},
+        json.dump({"pivot": [round(pivot[0], 1), round(pivot[1], 1)], "anims": {k: len(v[1]) for k, v in recipe["anims"].items()},
                    "dirs": recipe.get("dirs", 8)}, f)
     print(f"[sprites] unit {name} done")
 
@@ -388,4 +588,5 @@ def main():
         render_unit(name, r, opts)
 
 
-main()
+if __name__ == "__main__":
+    main()

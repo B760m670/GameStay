@@ -30,6 +30,7 @@ const int kLimits[kBTypes][6] = {
     {0, 0, 0, 1, 1, 2},           // Prism
     {20, 35, 55, 80, 110, 150},   // Wall
     {0, 0, 1, 1, 1, 1},           // Workshop
+    {0, 2, 3, 4, 5, 6},           // Trap
 };
 
 std::vector<BuildingDef> makeBuildings() {
@@ -109,6 +110,12 @@ std::vector<BuildingDef> makeBuildings() {
     K.type = BType::Workshop; K.id = "workshop"; K.name = "Кузница"; K.size = 3; K.maxLevel = 4; K.category = Category::Army; K.costRes = Res::Aether;
     K.desc = "Здесь куют оружие и доспехи: каждый уровень отряда даёт +12% к здоровью и урону. Уровень Кузницы ограничивает уровень отрядов.";
     K.cost = {3000, 9000, 25000, 60000}; K.time = {120, 600, 1500, 3000}; K.hp = {800, 950, 1120, 1300};
+
+    auto& Tr = v[(int)BType::Trap];
+    Tr.type = BType::Trap; Tr.id = "trap"; Tr.name = "Огненная ловушка"; Tr.size = 1; Tr.maxLevel = 4; Tr.category = Category::Defense; Tr.costRes = Res::Ore;
+    Tr.desc = "Спрятана в земле. Когда рядом проходит враг — взрывается и обжигает всех вокруг. Срабатывает один раз за бой.";
+    Tr.cost = {400, 1500, 5000, 14000}; Tr.time = {5, 60, 240, 600}; Tr.hp = {1, 1, 1, 1};
+    Tr.range = 0.9f; Tr.dmg = {60, 85, 115, 150}; Tr.splash = 1.7f; Tr.ground = true; Tr.trap = true;
     return v;
 }
 

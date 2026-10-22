@@ -32,7 +32,7 @@ float costLabel(lf::Res r, long long amount, float x, float y, float size, uint3
 }
 
 const lf::BType kShopTabs[4][6] = {
-    {lf::BType::Ballista, lf::BType::Brazier, lf::BType::Catapult, lf::BType::Prism, lf::BType::Count, lf::BType::Count},
+    {lf::BType::Ballista, lf::BType::Brazier, lf::BType::Catapult, lf::BType::Prism, lf::BType::Trap, lf::BType::Count},
     {lf::BType::Beacon, lf::BType::Wall, lf::BType::Count, lf::BType::Count, lf::BType::Count, lf::BType::Count},
     {lf::BType::OreMine, lf::BType::AetherWell, lf::BType::OreStore, lf::BType::AetherStore, lf::BType::BuilderHut, lf::BType::Count},
     {lf::BType::Barracks, lf::BType::Camp, lf::BType::Workshop, lf::BType::Count, lf::BType::Count, lf::BType::Count},
@@ -246,13 +246,7 @@ void App::updateLife(float dt) {
             particles.push_back({22 + std::cos(a) * r, 22 + std::sin(a) * r, 10 + rnd() * 30, (rnd() - 0.5f) * 0.4f, (rnd() - 0.5f) * 0.4f, (rnd() - 0.5f) * 6, 4, 4, 5, gfx::rgba(200, 255, 140, 200), true});
         }
     }
-    for (auto& p : particles) {
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-        p.z += p.vz * dt;
-        p.life -= dt;
-    }
-    particles.erase(std::remove_if(particles.begin(), particles.end(), [](const world::Particle& p) { return p.life <= 0; }), particles.end());
+    world::updateParticles(particles, dt);
 }
 
 void App::startPlacing(lf::BType type) {
@@ -334,7 +328,7 @@ void App::drawVillageWorld() {
     lf::VillageState view = S;
     if (placing.active && placing.moveId >= 0)
         for (auto& b : view.buildings) if (b.id == placing.moveId) { b.x = placing.x; b.y = placing.y; }
-    for (const auto& b : view.buildings) if (b.type != lf::BType::Wall) world::drawDirt(cam, (float)b.x, (float)b.y, (float)b.def().size);
+    for (const auto& b : view.buildings) if (b.type != lf::BType::Wall && b.type != lf::BType::Trap) world::drawDirt(cam, (float)b.x, (float)b.y, (float)b.def().size);
     world::drawMeadow(cam);
     world::drawFog(cam, V::sources(view), {}, t);
     struct Item { float depth; const lf::BuildingRec* b; bool ghost; const world::Decor* d = nullptr; int actor = -1; };
@@ -357,9 +351,9 @@ void App::drawVillageWorld() {
         if (it.d) { world::drawDecor(cam, *it.d); continue; }
         if (it.actor >= 0) {
             const Actor& a = it.actor >= 1000 ? idlers[it.actor - 1000] : workers[it.actor];
-            int frame = a.working ? (int)(a.anim * 6) % 3 : (int)(a.anim * 8) % 4;
-            std::string anim = a.working ? "interact-right" : (a.unit == "worker" ? "walk" : world::moveAnim((lf::TroopType)a.job));
-            if (!a.working && a.wait > 0) frame = 0;
+            bool still = !a.working && std::hypot(a.tx - a.x, a.ty - a.y) <= 0.05f;
+            int frame = a.working ? (int)(a.anim * 9) % 6 : still ? (int)(a.anim * 4) % 4 : (int)(a.anim * 12) % 8;
+            std::string anim = a.working ? "attack" : still ? "idle" : "move";
             world::drawUnit(cam, a.unit, anim, a.angle, frame, a.x, a.y);
             continue;
         }
@@ -746,7 +740,17 @@ void App::drawArmy() {
     V::tick(S, tnow);
     int cap = V::campCapacity(S), have = V::armyHousing(S), q = V::queueHousing(S);
     font::draw("Лагеря: " + std::to_string(have) + " + " + std::to_string(q) + " в обучении / " + std::to_string(cap), body.x, body.y, 16, kInk, font::Left, false);
-    ui::bar({body.x + 330, body.y + 4, body.w - 330, 14}, cap ? (float)(have + q) / cap : 0, kGold);
+    ui::bar({body.x + 330, body.y + 4, body.w - 330 - 180, 14}, cap ? (float)(have + q) / cap : 0, kGold);
+    // заклинания: открываются уровнем игрока
+    auto spells = V::spellCharges(S.level);
+    float sx = body.x + body.w - 170;
+    for (lf::Spell sp : {lf::Spell::Heal, lf::Spell::Rage}) {
+        bool open = spells.count(sp) > 0;
+        ui::icon(sp == lf::Spell::Heal ? "icon/heal" : "icon/rage", sx + 14, body.y + 10, 28, open ? 0xffffffffu : rgba(120, 110, 130, 200));
+        font::draw(open ? "x" + std::to_string(spells[sp]) : "ур. " + std::to_string(V::spellUnlockLevel(sp)), sx + 32, body.y + 2, 14,
+                   open ? kInk : kInkSoft, font::Left, false);
+        sx += 86;
+    }
     // очередь
     float qx = body.x, qy = body.y + 28;
     if (S.trainQueue.empty()) font::draw("Очередь пуста — нажми на отряд, чтобы обучить", qx, qy + 6, 14, kInkSoft, font::Left, false);

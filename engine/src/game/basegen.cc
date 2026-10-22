@@ -102,6 +102,7 @@ std::vector<LayoutItem> generate(int LL, int seed, const std::map<BType, int>* c
         {BType::OreStore, 0}, {BType::AetherStore, 0},
         {BType::Prism, 1}, {BType::Catapult, 1}, {BType::Brazier, 1}, {BType::Ballista, 1},
         {BType::Barracks, 2}, {BType::Camp, 2}, {BType::OreMine, 2}, {BType::AetherWell, 2}, {BType::BuilderHut, 2},
+        {BType::Trap, 1},
     };
     std::map<BType, std::vector<size_t>> placed;
     for (auto [type, role] : order) {

@@ -1,4 +1,5 @@
 // Тесты игрового ядра. Запуск: ctest или ./build/lf_tests
+#include <cmath>
 #include <cstdio>
 #include <functional>
 #include <set>
@@ -224,6 +225,51 @@ TEST(workshop_research_and_battle_levels) {
         return B.simulate().pct;
     };
     CHECK(run(5) >= run(1), "");
+}
+
+TEST(spells_heal_and_rage) {
+    BattleOptions o;
+    o.layout = basegen::generate(2, 3);
+    o.army[TroopType::Shield] = 2;
+    o.spells[Spell::Heal] = 1;
+    Battle B(o);
+    CHECK(B.deploy(TroopType::Shield, 1, 1), "");
+    B.troops[0].hp = B.troops[0].maxHp * 0.3f;
+    CHECK(B.castSpell(Spell::Heal, 1, 1), "");
+    CHECK(!B.castSpell(Spell::Heal, 1, 1), "no charges left");
+    CHECK(!B.castSpell(Spell::Rage, 1, 1), "rage not given");
+    for (int i = 0; i < 60; i++) B.step(1.f / 30);
+    CHECK(B.troops[0].hp > B.troops[0].maxHp * 0.4f, "hp=%f", B.troops[0].hp);
+    // ярость: войска в зоне бегут быстрее
+    auto dist = [](bool rage) {
+        BattleOptions o;
+        o.layout = basegen::generate(2, 3);
+        o.army[TroopType::Torch] = 1;
+        o.spells[Spell::Rage] = 1;
+        Battle B(o);
+        B.deploy(TroopType::Torch, 1, 1);
+        if (rage) B.castSpell(Spell::Rage, 1, 1);
+        for (int i = 0; i < 15; i++) B.step(1.f / 30);
+        return std::hypot(B.troops[0].x - 1, B.troops[0].y - 1);
+    };
+    CHECK(dist(true) > dist(false) * 1.3f, "%f vs %f", dist(true), dist(false));
+}
+
+TEST(trap_triggers_and_not_counted) {
+    BattleOptions o;
+    o.layout = {{BType::Lantern, 20, 20, 1, 0}, {BType::Trap, 3, 3, 1, 1}};
+    o.army[TroopType::Torch] = 1;
+    Battle B(o);
+    CHECK(B.total == 1, "total=%d", B.total);
+    CHECK(B.deploy(TroopType::Torch, 3.5f, 3.6f), "can deploy over a hidden trap");
+    B.step(1.f / 30);
+    CHECK(B.buildings[1].dead, "trap fired");
+    CHECK(B.troops[0].hp < B.troops[0].maxHp, "hp=%f", B.troops[0].hp);
+    CHECK(B.percent() == 0, "pct=%d", B.percent());
+    // в базах соперников ловушки есть
+    int traps = 0;
+    for (const auto& it : basegen::generate(3, 9)) traps += it.type == BType::Trap;
+    CHECK(traps > 0, "");
 }
 
 int main() {

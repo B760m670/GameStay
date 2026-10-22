@@ -72,7 +72,7 @@ constexpr float kWallCost = 10.f;
 }
 
 Battle::Battle(const BattleOptions& o)
-    : mode(o.mode), duration(o.duration), rng(o.seed), eclipseChargesLeft(o.eclipseCharges), pool(o.army),
+    : mode(o.mode), duration(o.duration), rng(o.seed), eclipseChargesLeft(o.eclipseCharges), spells(o.spells), pool(o.army),
       tileOwner(kGrid * kGrid, -1), waves(o.waves), hazeMult(o.hazeMult), troopLevels(o.troopLevels) {
     for (size_t idx = 0; idx < o.layout.size(); idx++) {
         const auto& it = o.layout[idx];
@@ -91,10 +91,11 @@ Battle::Battle(const BattleOptions& o)
         b.lightR = d.isLight() ? d.lv(d.light, it.level) : 0.f;
         b.lootOre = it.lootOre;
         b.lootAether = it.lootAether;
-        if (!b.isWall()) total++;
+        if (b.isStructure()) total++;
         lootTotalOre += b.lootOre;
         lootTotalAether += b.lootAether;
-        for (int j = b.y; j < b.y + b.size; j++)
+        if (!b.isTrap())  // по ловушкам ходят — они не занимают клетку
+            for (int j = b.y; j < b.y + b.size; j++)
             for (int i = b.x; i < b.x + b.size; i++) tileOwner[j * kGrid + i] = (int)idx;
         buildings.push_back(b);
     }
@@ -159,6 +160,15 @@ bool Battle::deploy(TroopType type, float x, float y) {
     return true;
 }
 
+bool Battle::castSpell(Spell s, float x, float y) {
+    auto it = spells.find(s);
+    if (ended || it == spells.end() || it->second <= 0) return false;
+    it->second--;
+    zones.push_back({s, x, y, kSpellRadius, time + kSpellDuration});
+    events.push_back({Ev::SpellCast, x, y, BType::Lantern});
+    return true;
+}
+
 bool Battle::castEclipse(float x, float y) {
     if (ended || eclipseChargesLeft <= 0) return false;
     eclipseChargesLeft--;
@@ -175,7 +185,7 @@ int Battle::chooseTarget(const BTroop& t) const {
         float bd = std::numeric_limits<float>::max();
         for (size_t i = 0; i < buildings.size(); i++) {
             const auto& b = buildings[i];
-            if (b.dead || !pred(b)) continue;
+            if (b.dead || b.isTrap() || !pred(b)) continue;
             float d = distToRect(t.x, t.y, (float)b.x, (float)b.y, (float)b.size);
             if (d < bd) { bd = d; best = (int)i; }
         }
@@ -221,7 +231,7 @@ void Battle::destroyBuilding(int bi) {
     b.hp = 0;
     effects.push_back({Fx::Boom, b.cx, b.cy, 0, 0, 0.8f, 0.8f, (float)b.size});
     events.push_back({Ev::Destroyed, b.cx, b.cy, b.type});
-    if (!b.isWall()) destroyed++;
+    if (b.isStructure()) destroyed++;
     if (b.type == BType::Lantern) {
         lanternDead = true;
         events.push_back({Ev::Lantern, b.cx, b.cy, b.type});
@@ -256,7 +266,7 @@ void Battle::troopAttack(int ti, int bi) {
     if (d.suicide) {
         for (size_t i = 0; i < buildings.size(); i++) {
             const auto& o = buildings[i];
-            if (o.dead) continue;
+            if (o.dead || o.isTrap()) continue;
             if (distToRect(t.x, t.y, (float)o.x, (float)o.y, (float)o.size) <= d.splash)
                 damageBuilding((int)i, o.isWall() ? d.dmg : d.dmg * 0.25f, ti);
         }
@@ -298,7 +308,10 @@ static bool moveToward(BTroop& t, float x, float y, float step) {
 
 void Battle::updateTroop(int ti, float dt) {
     BTroop& t = troops[ti];
-    if (t.cd > 0) t.cd -= dt;
+    float rage = 1;
+    for (const auto& z : zones)
+        if (z.kind == Spell::Rage && !t.def->haze && std::hypot(t.x - z.x, t.y - z.y) <= z.r) rage = kRageMult;
+    if (t.cd > 0) t.cd -= dt * rage;
     if (t.hitT > 0) t.hitT -= dt;
     t.animT += dt;
     t.attacking = false;
@@ -311,7 +324,7 @@ void Battle::updateTroop(int ti, float dt) {
     }
     const BBuilding& b = buildings[t.target];
     if (distToRect(t.x, t.y, (float)b.x, (float)b.y, (float)b.size) <= t.def->range) { troopAttack(ti, t.target); return; }
-    float step = t.def->speed * dt;
+    float step = t.def->speed * dt * rage;
     if (t.air) { moveToward(t, b.cx, b.cy, step); return; }
     float reach = std::max(t.def->range, 0.6f);
     if (t.wall >= 0) {
@@ -398,6 +411,20 @@ void Battle::updateDefense(int bi, float dt) {
     projectiles.push_back(p);
 }
 
+void Battle::updateTrap(int bi) {
+    BBuilding& b = buildings[bi];
+    bool near = false;
+    for (const auto& t : troops)
+        if (!t.dead && !t.air && std::hypot(t.x - b.cx, t.y - b.cy) <= b.def->range) { near = true; break; }
+    if (!near) return;
+    b.dead = true;
+    b.hp = 0;
+    splashTroops(b.cx, b.cy, b.def->splash, (float)b.def->lv(b.def->dmg, b.level), b.def);
+    effects.push_back({Fx::Blast, b.cx, b.cy, 0, 0, 0.6f, 0.6f, b.def->splash});
+    effects.push_back({Fx::Boom, b.cx, b.cy, 0, 0, 0.8f, 0.8f, 1.2f});
+    events.push_back({Ev::Trap, b.cx, b.cy, b.type});
+}
+
 void Battle::splashTroops(float x, float y, float r, float dmg, const BuildingDef* src) {
     for (size_t i = 0; i < troops.size(); i++) {
         const auto& t = troops[i];
@@ -454,12 +481,22 @@ void Battle::step(float dt) {
     }
     for (auto& w : waves)
         if (!w.done && time >= w.t) { w.done = true; spawnWave(w); }
+    if (!zones.empty()) {
+        zones.erase(std::remove_if(zones.begin(), zones.end(), [&](const SpellZone& z) { return z.until <= time; }), zones.end());
+        for (const auto& z : zones) {
+            if (z.kind != Spell::Heal) continue;
+            for (auto& t : troops)
+                if (!t.dead && !t.def->haze && std::hypot(t.x - z.x, t.y - z.y) <= z.r) t.hp = std::min(t.maxHp, t.hp + t.maxHp * kHealPerSec * dt);
+        }
+    }
     size_t n = troops.size();
     for (size_t i = 0; i < n; i++)
         if (!troops[i].dead) updateTroop((int)i, dt);
     for (size_t i = 0; i < buildings.size(); i++) {
         if (buildings[i].hitT > 0) buildings[i].hitT -= dt;
-        if (buildings[i].isDefense() && !buildings[i].dead) updateDefense((int)i, dt);
+        if (buildings[i].dead) continue;
+        if (buildings[i].isTrap()) updateTrap((int)i);
+        else if (buildings[i].isDefense()) updateDefense((int)i, dt);
     }
     updateProjectiles(dt);
     for (auto& e : effects) e.life -= dt;

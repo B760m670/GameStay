@@ -18,8 +18,9 @@ WARM = (1.0, 0.72, 0.32)
 AETHER = (0.45, 0.85, 1.0)
 
 
-def P(kit, model, at=(0, 0), z=0, rot=0, scale=1.0):
-    return {"kit": kit, "model": model, "at": at, "z": z, "rot": rot, "scale": scale}
+def P(kit, model, at=(0, 0), z=0, rot=0, scale=1.0, turret=False):
+    """Деталь постройки. turret=True — поворотная часть: рендерится в 8 направлениях (_d0.._d7)."""
+    return {"kit": kit, "model": model, "at": at, "z": z, "rot": rot, "scale": scale, "turret": turret}
 
 
 def house(cells_x=2, cells_y=2, storeys=1, front="town", roof="roof-gable"):
@@ -67,12 +68,12 @@ def beacon(t):
 
 def ballista(t):
     if t == 1:
-        parts = [P("survival", "structure-floor", (0, 0), 0, 0, 1.6), P("castle", "siege-ballista", (0, 0), "top", -45, 1.1)]
+        parts = [P("survival", "structure-floor", (0, 0), 0, 0, 1.6), P("castle", "siege-ballista", (0, 0), "top", -45, 1.1, True)]
     elif t == 2:
-        parts = [P("castle", "tower-square-base"), P("castle", "tower-square-mid", z="top"), P("castle", "siege-ballista", z="top", rot=-45, scale=0.8)]
+        parts = [P("castle", "tower-square-base"), P("castle", "tower-square-mid", z="top"), P("castle", "siege-ballista", z="top", rot=-45, scale=0.8, turret=True)]
     else:
         parts = [P("castle", "tower-hexagon-base"), P("castle", "tower-hexagon-mid", z="top"), P("castle", "tower-hexagon-mid", z="top"),
-                 P("castle", "siege-ballista", z="top", rot=-45, scale=0.75), P("castle", "flag-pennant", (0.35, 0.35), "top", 0, 0.8)]
+                 P("castle", "siege-ballista", z="top", rot=-45, scale=0.75, turret=True), P("castle", "flag-pennant", (0.35, 0.35), "top", 0, 0.8)]
     return {"size": 3, "fill": 0.86, "parts": parts}
 
 
@@ -85,11 +86,11 @@ def brazier(t):
 
 def catapult(t):
     if t == 1:
-        parts = [P("castle", "siege-catapult", (0, 0), 0, -45, 1.0)]
+        parts = [P("castle", "siege-catapult", (0, 0), 0, -45, 1.0, True)]
     elif t == 2:
-        parts = [P("survival", "structure-floor", (0, 0), 0, 0, 1.4), P("castle", "siege-catapult", (0, 0), "top", -45, 1.0)]
+        parts = [P("survival", "structure-floor", (0, 0), 0, 0, 1.4), P("castle", "siege-catapult", (0, 0), "top", -45, 1.0, True)]
     else:
-        parts = [P("survival", "structure-floor", (0, 0), 0, 0, 1.6), P("castle", "siege-trebuchet", (0, 0), "top", -45, 1.0),
+        parts = [P("survival", "structure-floor", (0, 0), 0, 0, 1.6), P("castle", "siege-trebuchet", (0, 0), "top", -45, 1.0, True),
                  P("castle", "flag-pennant", (0.8, 0.8), 0, 0, 0.8)]
     return {"size": 3, "fill": 0.88, "parts": parts}
 
@@ -171,7 +172,18 @@ def workshop(t):
             "glow": [{"h": 0.25, "r": 0.04, "x": 0.45, "y": -0.45, "color": WARM, "strength": 10, "light": 25}]}
 
 
-GEN = {"workshop": workshop, "lantern": lantern, "beacon": beacon, "ballista": ballista, "brazier": brazier, "catapult": catapult, "prism": prism,
+def trap(t):
+    """Огненная ловушка: кострище в земле, тлеющие угли; выше уровень — железная решётка и шипы."""
+    parts = [P("survival", "campfire-pit", (0, 0), 0, 0, 1.0)]
+    if t >= 2:
+        parts.append(P("survival", "metal-panel-screws-half", (0, 0), 0.05, 0, 0.55))
+    if t >= 3:
+        parts += [P("survival", "rock-a", (0.38, 0.3), 0, 30, 0.5), P("survival", "rock-c", (-0.35, -0.3), 0, 120, 0.5)]
+    return {"size": 1, "fill": 0.85, "parts": parts,
+            "glow": [{"h": 0.4, "r": 0.06, "color": (1.0, 0.45, 0.12), "strength": 12, "light": 25 + 10 * t}]}
+
+
+GEN = {"workshop": workshop, "trap": trap, "lantern": lantern, "beacon": beacon, "ballista": ballista, "brazier": brazier, "catapult": catapult, "prism": prism,
        "wall": wall, "oreMine": ore_mine, "aetherWell": aether_well, "oreStore": ore_store, "aetherStore": aether_store,
        "barracks": barracks, "camp": camp}
 
@@ -197,23 +209,39 @@ DECOR.update({
 for _k, (_m, _s, _f) in DECOR.items():
     BUILDINGS[f"decor_{_k}"] = {"size": _s, "fill": _f, "parts": [P("nature", _m)]}
 
-WALK = [0.0, 0.25, 0.5, 0.75]
-HIT = [0.25, 0.55]
+MOVE8 = [i / 8 for i in range(8)]
+ATK6 = [0.0, 0.18, 0.34, 0.5, 0.66, 0.84]
+IDLE4 = [0.0, 0.25, 0.5, 0.75]
+DIE5 = [0.0, 0.3, 0.55, 0.8, 1.0]
 
+
+def unit(kit, model, height, move, attack, hold=(), **kw):
+    """Стандартный набор анимаций юнита: move 8 кадров, attack 6, idle 4, die 5."""
+    idle = move if move == "fall" else "idle"
+    r = {"kit": kit, "model": model, "height": height, "hold": list(hold),
+         "anims": {"move": (move, MOVE8), "attack": (attack, ATK6), "idle": (idle, IDLE4), "die": ("die", DIE5)}}
+    r.update(kw)
+    return r
+
+
+R = (0, -90, 0)   # хват в правой руке: предмет вперёд-вниз в покое, заносится над головой при ударе
+L = (0, 90, 0)
 UNITS = {
-    "worker": {"kit": "chars", "model": "character-male-b", "height": 0.9, "anims": {"walk": WALK, "interact-right": [0.0, 0.33, 0.66]}},
-    "torch": {"kit": "chars", "model": "character-male-a", "height": 0.95, "anims": {"walk": WALK, "attack-melee-right": HIT}},
-    "archer": {"kit": "chars", "model": "character-female-a", "height": 0.9, "anims": {"walk": WALK, "holding-right-shoot": HIT}},
-    "shield": {"kit": "chars", "model": "character-male-c", "height": 1.15, "anims": {"walk": WALK, "attack-melee-left": HIT}},
-    "sapper": {"kit": "chars", "model": "character-male-e", "height": 0.85, "anims": {"sprint": WALK, "interact-right": HIT}},
-    "shade": {"kit": "grave", "model": "character-vampire", "height": 1.0, "anims": {"sprint": WALK, "attack-melee-right": HIT}},
-    "owl": {"kit": "chars", "model": "character-female-c", "height": 0.9, "lift": 0.0, "anims": {"fall": WALK, "holding-both-shoot": HIT}},
-    "morok": {"kit": "grave", "model": "character-ghost", "height": 0.85, "anims": {"walk": WALK, "attack-melee-right": HIT}},
-    "brute": {"kit": "grave", "model": "character-zombie", "height": 1.35, "anims": {"walk": WALK, "attack-melee-right": HIT}},
-    "leech": {"kit": "grave", "model": "character-skeleton", "height": 0.95, "anims": {"sprint": WALK, "attack-melee-left": HIT}},
-    "wraith": {"kit": "grave", "model": "character-ghost", "height": 1.25, "anims": {"fall": WALK, "holding-both-shoot": HIT}},
+    "worker": unit("chars", "character-male-b", 0.9, "walk", "interact-right", [{"item": "survival:tool-hammer", "rot": R, "scale": 1.7}]),
+    "torch": unit("chars", "character-male-a", 0.95, "walk", "attack-melee-right", [{"item": "torch", "rot": R, "scale": 1.6}]),
+    "archer": unit("chars", "character-female-a", 0.9, "walk", "holding-right-shoot", [{"item": "bow", "rot": R, "scale": 2.0}]),
+    "shield": unit("chars", "character-male-c", 1.15, "walk", "attack-melee-right",
+                   [{"item": "sword", "rot": R, "scale": 1.7}, {"item": "shield", "bone": "arm-left", "rot": (0, 0, 0), "off": (0, -0.04, 0), "scale": 1.5}]),
+    "sapper": unit("chars", "character-male-e", 0.85, "sprint", "interact-right", [{"item": "bomb", "rot": R, "scale": 1.6}]),
+    "shade": unit("grave", "character-vampire", 1.0, "sprint", "attack-melee-right",
+                  [{"item": "dagger", "rot": R, "scale": 1.7, "color": (0.5, 0.1, 0.15)}]),
+    "owl": unit("chars", "character-female-c", 0.9, "fall", "holding-both-shoot", [{"item": "staff", "rot": R, "scale": 1.5}], lift=0.0),
+    "morok": unit("grave", "character-ghost", 0.85, "walk", "attack-melee-right"),
+    "brute": unit("grave", "character-zombie", 1.35, "walk", "attack-melee-right", [{"item": "survival:tool-axe", "rot": R, "scale": 1.9}]),
+    "leech": unit("grave", "character-skeleton", 0.95, "sprint", "attack-melee-left",
+                  [{"item": "sword", "bone": "arm-left", "rot": L, "scale": 1.5, "color": (0.35, 0.3, 0.28)}]),
+    "wraith": unit("grave", "character-ghost", 1.25, "fall", "holding-both-shoot", [{"item": "darkstaff", "rot": R, "scale": 1.5}]),
 }
-
 
 ORE = (0.95, 0.42, 0.1)
 GOLD = (1.0, 0.68, 0.1)

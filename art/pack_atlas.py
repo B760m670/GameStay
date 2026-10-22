@@ -400,11 +400,56 @@ def lantern(d, s, im):
     d.polygon([(S * .24, S * .32), (S * .5, S * .1), (S * .76, S * .32)], fill=(90, 70, 140, 255))
 
 
-for n, f in [("ore", ore), ("aether", aether), ("shard", shard), ("star", star), ("builder", hammer), ("army", sword),
+def heal(d, s, im):
+    S = 128 * s
+    d.ellipse((S * .08, S * .08, S * .92, S * .92), fill=(30, 18, 40, 255))
+    d.ellipse((S * .15, S * .15, S * .85, S * .85), fill=(110, 220, 120, 255))
+    outlined_poly(d, [(S * .42, S * .24), (S * .58, S * .24), (S * .58, S * .42), (S * .76, S * .42), (S * .76, S * .58), (S * .58, S * .58),
+                      (S * .58, S * .76), (S * .42, S * .76), (S * .42, S * .58), (S * .24, S * .58), (S * .24, S * .42), (S * .42, S * .42)], (250, 255, 240), s)
+
+
+def rage(d, s, im):
+    S = 128 * s
+    d.ellipse((S * .08, S * .08, S * .92, S * .92), fill=(30, 18, 40, 255))
+    d.ellipse((S * .15, S * .15, S * .85, S * .85), fill=(200, 50, 60, 255))
+    pts = [(S * .5, S * .18), (S * .64, S * .4), (S * .7, S * .3), (S * .76, S * .56), (S * .66, S * .8), (S * .34, S * .8), (S * .24, S * .56),
+           (S * .32, S * .36), (S * .4, S * .46)]
+    outlined_poly(d, pts, (255, 190, 70), s)
+    d.polygon([(S * .5, S * .48), (S * .6, S * .66), (S * .54, S * .78), (S * .46, S * .78), (S * .4, S * .66)], fill=(255, 245, 200, 255))
+
+
+for n, f in [("heal", heal), ("rage", rage), ("ore", ore), ("aether", aether), ("shard", shard), ("star", star), ("builder", hammer), ("army", sword),
              ("build", house), ("codex", scroll), ("night", moon), ("map", mapi), ("menu", gear), ("upgrade", up),
              ("clock", clock), ("close", close), ("eclipse", eclipse), ("flag", flag), ("lantern", lantern)]:
     icon(n, f)
 icon("star_off", lambda d, s, im: star(d, s, im, (70, 60, 90)))
+
+# ---------- портреты персонажей (art/source/portraits, сгенерированы в Higgsfield) ----------
+def portrait(path, size=300, radius=40):
+    src = Image.open(path).convert("RGBA").resize((size - 18, size - 18), Image.LANCZOS)
+    out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    big = size * SS
+
+    def rr(inset, fill):
+        m = Image.new("L", (big, big), 0)
+        ImageDraw.Draw(m).rounded_rectangle((inset * SS, inset * SS, big - inset * SS, big - inset * SS), radius * SS - inset * SS, fill=255)
+        layer = Image.new("RGBA", (size, size), fill)
+        layer.putalpha(m.resize((size, size), Image.LANCZOS))
+        return layer
+    out.alpha_composite(rr(0, (30, 18, 40, 255)))
+    out.alpha_composite(rr(3, (232, 182, 84, 255)))
+    out.alpha_composite(rr(7, (60, 36, 20, 255)))
+    pic = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    pic.paste(src, (9, 9))
+    m = rr(9, (0, 0, 0, 255)).getchannel("A")
+    pic.putalpha(Image.composite(pic.getchannel("A"), Image.new("L", (size, size), 0), m))
+    out.alpha_composite(pic)
+    return out
+
+
+PORTRAITS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "source", "portraits")
+for png in sorted(glob.glob(os.path.join(PORTRAITS, "*.png"))):
+    add("portrait/" + os.path.basename(png)[:-4], portrait(png), trim=False)
 
 # ---------- упаковка (полки по высоте) ----------
 sprites.sort(key=lambda t: (-t[1].height, -t[1].width))

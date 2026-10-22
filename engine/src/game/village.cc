@@ -300,6 +300,15 @@ void cancelTrain(VillageState& S, int index) {
 long long xpToNext(int level) { return 30 + 25LL * (level - 1) + 4LL * (level - 1) * (level - 1); }
 int levelReward(int level) { return 2 + level / 3; }
 
+int spellUnlockLevel(Spell s) { return s == Spell::Heal ? 3 : 5; }
+
+std::map<Spell, int> spellCharges(int level) {
+    std::map<Spell, int> m;
+    if (level >= spellUnlockLevel(Spell::Heal)) m[Spell::Heal] = level >= 10 ? 2 : 1;
+    if (level >= spellUnlockLevel(Spell::Rage)) m[Spell::Rage] = level >= 12 ? 2 : 1;
+    return m;
+}
+
 int addXp(VillageState& S, long long amount) {
     if (amount <= 0) return 0;
     S.xp += amount;
