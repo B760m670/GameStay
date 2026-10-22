@@ -143,6 +143,12 @@ struct TaskDef {
     int shards[3], xp[3];
 };
 
+// Препятствия на поляне: кусты, валуны, деревья. Расчищаются за руду, дают осколки и опыт; со временем вырастают новые.
+enum class ObKind { Bush, Rock, Tree, Stump, Flowers, Count };
+struct Obstacle { int id = 0; ObKind kind = ObKind::Bush; int x = 0, y = 0; };
+constexpr int kMaxObstacles = 30;
+constexpr long long kObstacleEveryMs = 4LL * 3600 * 1000;
+
 struct VillageState {
     static constexpr int kVersion = 1;
     long long created = 0;
@@ -162,6 +168,8 @@ struct VillageState {
     int rating = 0;        // рейтинг набегов
     std::array<int, kPlayerTroops> troopLevel{1, 1, 1, 1, 1, 1};
     int heroLevel = 1;
+    std::vector<Obstacle> obstacles;
+    long long obstacleAt = 0;  // когда вырастет следующее препятствие
     int researchType = -1;  // какой отряд сейчас улучшается в Кузнице
     long long researchUntil = 0;
     long long xp = 0;      // опыт внутри текущего уровня
@@ -241,6 +249,14 @@ int researchCost(TroopType t, int toLevel);
 int researchTime(TroopType t, int toLevel);
 Result canResearch(const VillageState& S, TroopType t, long long now);
 Result startResearch(VillageState& S, TroopType t, long long now);
+// Препятствия.
+int obstacleSize(ObKind k);
+int obstacleCost(ObKind k);  // руда
+const char* obstacleName(ObKind k);
+const Obstacle* obstacleAtCell(const VillageState& S, int x, int y);
+int obstacleShards(const Obstacle& o);  // сколько осколков даст расчистка
+Result clearObstacle(VillageState& S, int id, int* shards = nullptr);
+void seedObstacles(VillageState& S, int seed, int count);
 // Герой.
 bool heroUnlocked(const VillageState& S);
 int heroMaxLevel(const VillageState& S);  // ограничен уровнем Фонаря

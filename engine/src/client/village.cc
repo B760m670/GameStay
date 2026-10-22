@@ -108,7 +108,12 @@ void App::enterVillage() {
             return;
         }
         int b = buildingAt(w.x, w.y);
-        if (b < 0) { selected = -1; return; }
+        selectedOb = -1;
+        if (b < 0) {
+            selected = -1;
+            if (const lf::Obstacle* o = V::obstacleAtCell(S, (int)std::floor(w.x), (int)std::floor(w.y))) selectedOb = o->id;
+            return;
+        }
         auto* rec = V::get(S, b);
         if (rec->def().produces != lf::Res::None && V::collectorAmount(*rec, now()) >= 1 && selected != b) {
             long long got = V::collect(S, b, now());
@@ -364,6 +369,10 @@ void App::drawVillageWorld() {
     for (size_t i = 0; i < workers.size(); i++) items.push_back({workers[i].x + workers[i].y, nullptr, false, nullptr, (int)i});
     for (size_t i = 0; i < idlers.size(); i++) items.push_back({idlers[i].x + idlers[i].y, nullptr, false, nullptr, 1000 + (int)i});
     if (heroOn) items.push_back({heroA.x + heroA.y, nullptr, false, nullptr, 2000});
+    for (size_t i = 0; i < S.obstacles.size(); i++) {
+        const auto& o = S.obstacles[i];
+        items.push_back({(float)(o.x + o.y + V::obstacleSize(o.kind)), nullptr, false, nullptr, 3000 + (int)i});
+    }
     for (const auto& b : view.buildings) items.push_back({(float)(b.x + b.y + b.def().size), &b, false});
     for (const auto& d : world::decor()) items.push_back({d.depth, nullptr, false, &d});
     lf::BuildingRec ghost;
@@ -378,6 +387,19 @@ void App::drawVillageWorld() {
     long long tnow = now();
     for (const auto& it : items) {
         if (it.d) { world::drawDecor(cam, *it.d, t); continue; }
+        if (it.actor >= 3000) {
+            const auto& o = S.obstacles[it.actor - 3000];
+            static const char* trees[] = {"b/decor_oak", "b/decor_fat", "b/decor_pine", "b/decor_detailed"};
+            const char* sp = o.kind == lf::ObKind::Tree ? trees[o.id % 4] : o.kind == lf::ObKind::Rock ? "b/decor_rock_large"
+                           : o.kind == lf::ObKind::Stump ? "b/decor_stump" : o.kind == lf::ObKind::Flowers ? "b/decor_flowers" : "b/decor_bush2";
+            int sz = V::obstacleSize(o.kind);
+            if (o.id == selectedOb) {
+                float pulse = 0.5f + 0.5f * std::sin(t * 5);
+                world::drawFootprint(cam, o.x - 0.1f, o.y - 0.1f, sz + 0.2f, rgba(255, 230, 120, (int)(50 + 50 * pulse)));
+            }
+            world::drawDecor(cam, world::Decor{sp, (float)o.x, (float)o.y, sz, 0}, t);
+            continue;
+        }
         if (it.actor >= 0) {
             const Actor& a = it.actor == 2000 ? heroA : it.actor >= 1000 ? idlers[it.actor - 1000] : workers[it.actor];
             bool still = !a.working && std::hypot(a.tx - a.x, a.ty - a.y) <= 0.05f;
@@ -477,6 +499,12 @@ void App::drawVillageHud() {
 
     if (placing.active && placing.moveId < 0) { drawPlacingPanel(); return; }
     if (selected >= 0 && V::get(S, selected) && modal == Modal::None) { drawSelectedPanel(); return; }
+    if (selectedOb >= 0 && modal == Modal::None) {
+        bool exists = false;
+        for (const auto& o : S.obstacles) exists = exists || o.id == selectedOb;
+        if (exists) { drawObstaclePanel(); return; }
+        selectedOb = -1;
+    }
 
     // нижняя панель
     const float bw = 70, bh = 62, gap = 7;
@@ -496,6 +524,7 @@ void App::drawVillageHud() {
             modal = btns[i].m;
             audio::play("open", 0.6f);
             selected = -1;
+            selectedOb = -1;
             resetArmed = false;
         }
         if (i == 4 && ready > 0) {  // значок «есть награда»
@@ -606,6 +635,47 @@ void App::drawTasks() {
         if (ui::button({body.x + body.w / 2 - 110, by, 44, 38}, "<", ui::Style::Dark, codexPage > 0)) codexPage--;
         font::draw(std::to_string(codexPage + 1) + "/" + std::to_string(pages), body.x + body.w / 2, by + 9, 16, kInk, font::Center, false);
         if (ui::button({body.x + body.w / 2 + 66, by, 44, 38}, ">", ui::Style::Dark, codexPage < pages - 1)) codexPage++;
+    }
+}
+
+namespace {
+float vrand() {
+    static uint32_t seed = 777;
+    seed = seed * 1664525u + 1013904223u;
+    return (seed >> 8) / 16777216.f;
+}
+}  // namespace
+
+void App::drawObstaclePanel() {
+    const lf::Obstacle* ob = nullptr;
+    for (const auto& o : S.obstacles) if (o.id == selectedOb) ob = &o;
+    if (!ob) return;
+    float by = cam.h - safeB - 50;
+    font::draw(V::obstacleName(ob->kind), cam.w / 2, by - 68, 22, kGold, font::Center);
+    int shards = V::obstacleShards(*ob);
+    font::draw(shards > 0 ? "Расчисти место — найдёшь " + std::to_string(shards) + " оск." : "Расчисти место для построек", cam.w / 2, by - 40, 15,
+               0xffffffffu, font::Center);
+    int cost = V::obstacleCost(ob->kind);
+    if (ui::roundButton(cam.w / 2, by, 32, "icon/ore", fmtNum(cost), S.ore >= cost ? ui::Style::Gold : ui::Style::Normal, true)) {
+        int s = V::obstacleSize(ob->kind);
+        float cx = ob->x + s / 2.f, cy = ob->y + s / 2.f;
+        int got = 0;
+        auto r = V::clearObstacle(S, ob->id, &got);
+        if (!r.ok) { toast(r.reason, kBad); return; }
+        audio::play("destroy", 0.6f, 1.3f);
+        for (int i = 0; i < 18; i++) {  // листья и пыль
+            float a = vrand() * 6.283f, v = 0.6f + vrand() * 1.4f;
+            world::Particle p{cx, cy, 10 + vrand() * 30, std::cos(a) * v, std::sin(a) * v, 60 + vrand() * 120, 1.f + vrand() * 0.6f, 1.6f, 3 + vrand() * 3,
+                              i % 2 ? rgba(110, 160, 70) : rgba(150, 125, 90), false};
+            p.chunk = true;
+            particles.push_back(p);
+        }
+        if (got > 0) {
+            spawnFlyers(lf::Res::Shards, cam.toScreen(cx, cy, 30), got * 40);
+            toast("+" + std::to_string(got) + " оск.", kGold);
+        }
+        selectedOb = -1;
+        save();
     }
 }
 

@@ -337,6 +337,26 @@ TEST(replay_restores_battle_exactly) {
     CHECK(same, "troop state differs");
 }
 
+TEST(obstacles_block_clear_and_grow) {
+    auto S = village::create(0);
+    CHECK(S.obstacles.size() >= 12, "n=%zu", S.obstacles.size());
+    const auto o = S.obstacles[0];
+    // нельзя строить поверх препятствия (свет не важен: проверяем, что причина — препятствие или тьма)
+    auto r = village::canPlace(S, BType::Wall, o.x, o.y, -1);
+    CHECK(!r.ok, "");
+    S.ore = 100000;
+    long long shards = S.shards;
+    int got = -1;
+    CHECK(village::clearObstacle(S, o.id, &got).ok, "");
+    CHECK(S.shards == shards + got && got >= 0, "");
+    CHECK(village::obstacleAtCell(S, o.x, o.y) == nullptr, "");
+    size_t n = S.obstacles.size();
+    village::tick(S, kObstacleEveryMs * 3 + 10);
+    CHECK(S.obstacles.size() > n, "grew %zu -> %zu", n, S.obstacles.size());
+    VillageState L;
+    CHECK(village::load(village::save(S), L) && L.obstacles.size() == S.obstacles.size(), "");
+}
+
 int main() {
     for (auto& [name, fn] : registry()) {
         int before = failures;

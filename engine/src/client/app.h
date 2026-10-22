@@ -131,6 +131,8 @@ private:
 
     // деревня
     int selected = -1;
+    int selectedOb = -1;  // выбранное препятствие
+    void drawObstaclePanel();
     Placing placing;
     int mapTab = 0, shopTab = 0, codexPage = 0;
     bool resetArmed = false;

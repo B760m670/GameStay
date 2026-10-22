@@ -56,7 +56,88 @@ VillageState create(long long now) {
     add(BType::BuilderHut, 18, 17);
     add(BType::BuilderHut, 18, 26);
     S.army[(int)TroopType::Torch] = 10;
+    seedObstacles(S, 1234, 18);
+    S.obstacleAt = now + kObstacleEveryMs;
     return S;
+}
+
+// ---------- препятствия ----------
+int obstacleSize(ObKind k) { return k == ObKind::Rock || k == ObKind::Tree ? 2 : 1; }
+int obstacleCost(ObKind k) {
+    switch (k) {
+        case ObKind::Bush: return 80;
+        case ObKind::Rock: return 400;
+        case ObKind::Tree: return 300;
+        case ObKind::Stump: return 150;
+        default: return 40;
+    }
+}
+const char* obstacleName(ObKind k) {
+    switch (k) {
+        case ObKind::Bush: return "Куст";
+        case ObKind::Rock: return "Валун";
+        case ObKind::Tree: return "Дерево";
+        case ObKind::Stump: return "Пень";
+        default: return "Цветы";
+    }
+}
+
+const Obstacle* obstacleAtCell(const VillageState& S, int x, int y) {
+    for (const auto& o : S.obstacles) {
+        int s = obstacleSize(o.kind);
+        if (x >= o.x && x < o.x + s && y >= o.y && y < o.y + s) return &o;
+    }
+    return nullptr;
+}
+
+int obstacleShards(const Obstacle& o) {
+    uint32_t h = (uint32_t)o.id * 2654435761u;
+    int base = obstacleSize(o.kind) == 2 ? 1 : 0;
+    return base + (int)((h >> 28) % 3);
+}
+
+namespace {
+bool cellsFree(const VillageState& S, int x, int y, int s) {
+    if (x < kBorder || y < kBorder || x + s > kGrid - kBorder || y + s > kGrid - kBorder) return false;
+    for (const auto& b : S.buildings)
+        if (rectsOverlap(x, y, s, b.x, b.y, b.def().size)) return false;
+    for (const auto& o : S.obstacles)
+        if (rectsOverlap(x, y, s, o.x, o.y, obstacleSize(o.kind))) return false;
+    return true;
+}
+
+bool spawnObstacle(VillageState& S, Rng& rng) {
+    static const ObKind kinds[] = {ObKind::Bush, ObKind::Bush, ObKind::Flowers, ObKind::Stump, ObKind::Tree, ObKind::Tree, ObKind::Rock};
+    ObKind k = kinds[rng.range(7)];
+    int s = obstacleSize(k);
+    for (int attempt = 0; attempt < 60; attempt++) {
+        int x = kBorder + rng.range(kGrid - 2 * kBorder - s + 1), y = kBorder + rng.range(kGrid - 2 * kBorder - s + 1);
+        if (std::hypot(x + s / 2.f - 22, y + s / 2.f - 22) < 6) continue;  // не у самого Фонаря
+        if (!cellsFree(S, x, y, s)) continue;
+        S.obstacles.push_back({S.nextId++, k, x, y});
+        return true;
+    }
+    return false;
+}
+}  // namespace
+
+void seedObstacles(VillageState& S, int seed, int count) {
+    Rng rng(seed);
+    for (int i = 0; i < count; i++) spawnObstacle(S, rng);
+}
+
+Result clearObstacle(VillageState& S, int id, int* shards) {
+    auto it = std::find_if(S.obstacles.begin(), S.obstacles.end(), [&](const Obstacle& o) { return o.id == id; });
+    if (it == S.obstacles.end()) return Result::no("Уже расчищено");
+    int cost = obstacleCost(it->kind);
+    if (S.ore < cost) return Result::no("Не хватает руды");
+    S.ore -= cost;
+    int got = obstacleShards(*it);
+    S.shards += got;
+    if (shards) *shards = got;
+    S.obstacles.erase(it);
+    addXp(S, 2);
+    return Result::yes();
 }
 
 BuildingRec* get(VillageState& S, int id) {
@@ -168,6 +249,8 @@ Result canPlace(const VillageState& S, BType t, int x, int y, int ignoreId) {
     if (x < kBorder || y < kBorder || x + s > kGrid - kBorder || y + s > kGrid - kBorder) return Result::no("За краем мира");
     for (const auto& b : S.buildings)
         if (b.id != ignoreId && rectsOverlap(x, y, s, b.x, b.y, b.def().size)) return Result::no("Место занято");
+    for (const auto& o : S.obstacles)
+        if (rectsOverlap(x, y, s, o.x, o.y, obstacleSize(o.kind))) return Result::no(std::string("Мешает: ") + obstacleName(o.kind) + " — расчисти");
     auto src = sources(S, ignoreId);
     if (t != BType::Lantern && !footprintLit(x, y, s, src)) return Result::no("Здесь тьма — нужен свет");
     if (def.isLight() && ignoreId >= 0) {
@@ -440,6 +523,13 @@ bool claimTask(VillageState& S, const TaskDef& t) {
 }
 
 void tick(VillageState& S, long long now) {
+    if (S.obstacleAt == 0) S.obstacleAt = now + kObstacleEveryMs;
+    for (int guard = 0; now >= S.obstacleAt && guard < 8; guard++) {  // за долгое отсутствие — не больше 8 за раз
+        Rng rng((int32_t)(S.obstacleAt / 1000));
+        if ((int)S.obstacles.size() < kMaxObstacles) spawnObstacle(S, rng);
+        S.obstacleAt += kObstacleEveryMs;
+    }
+    if (now >= S.obstacleAt) S.obstacleAt = now + kObstacleEveryMs;
     for (auto& b : S.buildings)
         if (b.busyUntil != 0 && b.busyUntil <= now) {
             long long xp = buildXp(b);
@@ -520,6 +610,8 @@ std::string save(const VillageState& S) {
     for (const auto& q : S.trainQueue) o << "q " << (int)q.type << " " << q.left << "\n";
     for (const auto& [id, st] : S.campaign) o << "mission " << id << " " << st << "\n";
     for (const auto& c : S.codex) o << "codex " << c << "\n";
+    o << "obsAt " << S.obstacleAt << "\n";
+    for (const auto& ob : S.obstacles) o << "obs " << ob.id << " " << (int)ob.kind << " " << ob.x << " " << ob.y << "\n";
     return o.str();
 }
 
@@ -529,7 +621,7 @@ bool load(const std::string& text, VillageState& out) {
     S.codex.clear();
     std::istringstream in(text);
     std::string line;
-    bool versionOk = false;
+    bool versionOk = false, hasObs = false;
     while (std::getline(in, line)) {
         std::istringstream l(line);
         std::string k;
@@ -562,8 +654,16 @@ bool load(const std::string& text, VillageState& out) {
             if (t >= 0 && t < kPlayerTroops) S.trainQueue.push_back({(TroopType)t, left});
         } else if (k == "mission") { std::string id; int st; l >> id >> st; S.campaign[id] = st; }
         else if (k == "codex") { std::string c; l >> c; S.codex.push_back(c); }
+        else if (k == "obsAt") { l >> S.obstacleAt; hasObs = true; }
+        else if (k == "obs") {
+            Obstacle ob;
+            int kind;
+            l >> ob.id >> kind >> ob.x >> ob.y;
+            if (kind >= 0 && kind < (int)ObKind::Count) { ob.kind = (ObKind)kind; S.obstacles.push_back(ob); }
+        }
     }
     if (!versionOk || S.buildings.empty()) return false;
+    if (!hasObs) seedObstacles(S, 1234, 18);  // старые сохранения: поляна зарастает впервые
     out = std::move(S);
     return true;
 }
