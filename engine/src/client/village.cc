@@ -358,7 +358,7 @@ void App::drawVillageWorld() {
         for (auto& b : view.buildings) if (b.id == placing.moveId) { b.x = placing.x; b.y = placing.y; }
     for (const auto& b : view.buildings) if (b.type != lf::BType::Wall && b.type != lf::BType::Trap) world::drawDirt(cam, (float)b.x, (float)b.y, (float)b.def().size);
     world::drawMeadow(cam, t);
-    world::drawFog(cam, V::sources(view), {}, t, 0.56f);
+    world::drawFog(cam, V::sources(view), {}, t, 0.5f);
     world::drawWaterFx(cam, t);
     if (placing.active) {
         float s = (float)lf::B(placing.type).size;
@@ -445,17 +445,16 @@ void App::drawVillageWorld() {
 
 void App::drawVillageHud() {
     long long tnow = now();
-    // слева: уровень игрока со шкалой опыта, затем Фонарь, строители, армия
+    // слева: щит с уровнем игрока и шкалой опыта, затем Фонарь, строители, армия
     float x = safeX, y = 10;
     {
-        float bw = 104;
-        ui::panel({x + 18, y + 4, bw, 32}, ui::Style::Dark);
+        float bw = 112;
         long long need = V::xpToNext(S.level);
-        ui::bar({x + 44, y + 18, bw - 34, 12}, (float)S.xp / need, rgba(120, 220, 255));
-        font::draw(fmtNum(S.xp) + "/" + fmtNum(need), x + 44 + (bw - 34) / 2, y + 4, 11, 0xffffffffu, font::Center);
-        atlas::drawRect(atlas::get("ui/round_gold"), x - 2, y - 2, 46, 46);
-        font::draw(std::to_string(S.level), x + 21, y + 9, 19, 0xffffffffu, font::Center);
-        x += bw + 28;
+        ui::bar({x + 40, y + 16, bw - 18, 16}, (float)S.xp / need, rgba(110, 210, 255));
+        font::draw(fmtNum(S.xp) + "/" + fmtNum(need), x + 40 + (bw - 18) / 2, y + 15, 12, 0xffffffffu, font::Center);
+        atlas::drawRect(atlas::get("ui/badge"), x - 6, y - 6, 54, 54);
+        font::draw(std::to_string(S.level), x + 21, y + 6, 22, 0xffffffffu, font::Center);
+        x += bw + 34;
     }
     auto chip = [&](const char* ic, const std::string& text, float w) {
         ui::panel({x, y, w, 40}, ui::Style::Dark);
@@ -506,28 +505,39 @@ void App::drawVillageHud() {
         selectedOb = -1;
     }
 
-    // нижняя панель
-    const float bw = 70, bh = 62, gap = 7;
-    const int n = 7;
-    float total = n * bw + (n - 1) * gap;
-    float bx = cam.w / 2 - total / 2, by = cam.h - bh - safeB;
+    // нижняя панель: большие «Поход» и «Строить» по краям, остальное — на деревянной полке
     bool due = V::nightDue(S, tnow);
     int ready = V::tasksReady(S);
-    struct B { const char* icon; std::string label; Modal m; };
-    B btns[n] = {{"icon/build", "Строить", Modal::Shop}, {"icon/army", "Армия", Modal::Army}, {"icon/map", "Поход", Modal::Map},
-                 {"icon/night", due ? "Мгла!" : fmtTime((S.nightAt - tnow) / 1000.0), Modal::Night}, {"icon/star", "Задания", Modal::Tasks},
-                 {"icon/codex", "Хроника", Modal::Codex}, {"icon/menu", "Меню", Modal::Menu}};
+    auto open = [&](Modal m) {
+        modal = m;
+        audio::play("open", 0.6f);
+        selected = -1;
+        selectedOb = -1;
+        resetArmed = false;
+    };
+    const float R = 38, cyB = cam.h - safeB - R - 14;
+    float pulse = 1 + 0.03f * std::sin(t * 3);
+    gfx::pushScale(safeX + R + 6, cyB, pulse);
+    bool attack = ui::roundButton(safeX + R + 6, cyB, R, "icon/map", "Поход", ui::Style::Red, true);
+    gfx::popScale();
+    if (attack) open(Modal::Map);
+    if (ui::roundButton(cam.w - safeX - R - 6, cyB, R, "icon/build", "Строить", ui::Style::Gold, true)) open(Modal::Shop);
+    const float bw = 66, bh = 58, gap = 6;
+    const int n = 5;
+    float total = n * bw + (n - 1) * gap;
+    float bx = cam.w / 2 - total / 2, by = cam.h - bh - safeB - 4;
+    atlas::draw9(atlas::get("ui/shelf"), bx - 18, by + bh - 26, total + 36, 34, 50, 16);
+    struct B { const char* icon; std::string label; Modal m; ui::Style st; };
+    B btns[n] = {{"icon/army", "Армия", Modal::Army, ui::Style::Normal},
+                 {"icon/night", due ? "Мгла!" : fmtTime((S.nightAt - tnow) / 1000.0), Modal::Night, due ? ui::Style::Red : ui::Style::Dark},
+                 {"icon/star", "Задания", Modal::Tasks, ui::Style::Normal},
+                 {"icon/codex", "Хроника", Modal::Codex, ui::Style::Normal},
+                 {"icon/menu", "Меню", Modal::Menu, ui::Style::Dark}};
     for (int i = 0; i < n; i++) {
-        bool hl = (i == 3 && due && std::fmod(t, 1.2f) < 0.8f) || (i == 4 && ready > 0 && std::fmod(t, 1.4f) < 0.9f);
+        bool hl = (i == 1 && due && std::fmod(t, 1.2f) < 0.8f) || (i == 2 && ready > 0 && std::fmod(t, 1.4f) < 0.9f);
         ui::Rect r{bx + i * (bw + gap), by, bw, bh};
-        if (ui::iconButton(r, btns[i].icon, btns[i].label, i == 2 ? ui::Style::Gold : ui::Style::Normal, hl)) {
-            modal = btns[i].m;
-            audio::play("open", 0.6f);
-            selected = -1;
-            selectedOb = -1;
-            resetArmed = false;
-        }
-        if (i == 4 && ready > 0) {  // значок «есть награда»
+        if (ui::iconButton(r, btns[i].icon, btns[i].label, btns[i].st, hl)) open(btns[i].m);
+        if (i == 2 && ready > 0) {  // значок «есть награда»
             atlas::drawRect(atlas::get("fx/dot"), r.x + r.w - 20, r.y - 8, 26, 26, rgba(30, 14, 20));
             atlas::drawRect(atlas::get("fx/dot"), r.x + r.w - 18, r.y - 6, 22, 22, rgba(230, 60, 50));
             font::draw(std::to_string(ready), r.x + r.w - 7, r.y - 4, 14, 0xffffffffu, font::Center, false);
@@ -562,7 +572,7 @@ void App::drawWorkshop() {
         bool unlocked = V::barracksLevel(S) >= d.unlock;
         auto can = V::canResearch(S, type, tnow);
         ui::Rect r{cx, cy, cw, ch};
-        atlas::draw9(atlas::get(unlocked ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 24, 12);
+        atlas::draw9(atlas::get(unlocked ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 40, 12);
         world::drawTroopThumb(type, cx + cw / 2, cy + ch * 0.27f, ch * 0.42f);
         font::draw(d.name, cx + cw / 2, cy + ch * 0.5f, 14, kInk, font::Center, false);
         for (int s = 0; s < V::kMaxTroopLevel; s++)
@@ -605,7 +615,7 @@ void App::drawTasks() {
         int tier = V::taskClaimed(S, d);
         bool done = tier >= 3, ready = V::taskReady(S, d);
         long long goal = d.goal[std::min(tier, 2)], prog = V::taskProgress(S, d);
-        atlas::draw9(atlas::get(done ? "ui/card_dark" : "ui/card"), body.x, y, body.w, rh, 24, 12);
+        atlas::draw9(atlas::get(done ? "ui/card_dark" : "ui/card"), body.x, y, body.w, rh, 40, 12);
         for (int s = 0; s < 3; s++) ui::icon(s < tier ? "icon/star" : "icon/star_off", body.x + 22 + s * 24, y + rh / 2, 24);
         font::draw(d.title, body.x + 96, y + 6, 17, kInk, font::Left, false);
         char buf[160];
@@ -817,7 +827,7 @@ void App::drawShop() {
         auto can = V::canBuild(S, type, now());
         auto cost = V::buildCost(S, type);
         ui::Rect r{cx, cy, cw, ch};
-        atlas::draw9(atlas::get(can.ok ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 24, 12);
+        atlas::draw9(atlas::get(can.ok ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 40, 12);
         world::drawBuildingThumb(type, cx + cw / 2, cy + ch * 0.36f, cw - 8, ch * 0.62f);
         font::draw(d.name, cx + cw / 2, cy + ch * 0.68f, 16, kInk, font::Center, false);
         font::draw(std::to_string(V::countOf(S, type)) + "/" + std::to_string(lf::limit(type, LL)) + (d.time[0] ? " · " + fmtTime(d.time[0]) : ""),
@@ -855,7 +865,7 @@ void App::drawArmy() {
     if (S.trainQueue.empty()) font::draw("Очередь пуста — нажми на отряд, чтобы обучить", qx, qy + 6, 14, kInkSoft, font::Left, false);
     for (size_t i = 0; i < S.trainQueue.size() && i < 14; i++) {
         ui::Rect r{qx, qy, 46, 40};
-        atlas::draw9(atlas::get("ui/card"), qx, qy, 46, 40, 24, 10);
+        atlas::draw9(atlas::get("ui/card"), qx, qy, 46, 40, 40, 10);
         world::drawTroopThumb(S.trainQueue[i].type, qx + 23, qy + 20, 34);
         if (i == 0) font::draw(fmtTime(S.trainQueue[0].left / std::max(1, V::barracksCount(S))), qx + 23, qy + 26, 11, kInk, font::Center, false);
         if (ui::tapped(r)) V::cancelTrain(S, (int)i);
@@ -867,7 +877,7 @@ void App::drawArmy() {
         bool open = V::heroUnlocked(S);
         int maxL = V::heroMaxLevel(S);
         ui::Rect r{cx, cy, cw, ch};
-        atlas::draw9(atlas::get(open ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 24, 12, open ? rgba(255, 236, 190) : 0xffffffffu);
+        atlas::draw9(atlas::get(open ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 40, 12, open ? rgba(255, 236, 190) : 0xffffffffu);
         world::drawTroopThumb(lf::TroopType::Hero, cx + cw / 2, cy + ch * 0.32f, ch * 0.55f);
         font::draw("Фонарщик", cx + cw / 2, cy + ch * 0.58f, 15, kInk, font::Center, false);
         font::draw(open ? "Герой · ур. " + std::to_string(S.heroLevel) : "Герой", cx + cw / 2, cy + ch * 0.58f + 20, 11, kInkSoft, font::Center, false);
@@ -890,7 +900,7 @@ void App::drawArmy() {
         auto can = V::canTrain(S, type);
         bool unlocked = V::barracksLevel(S) >= d.unlock;
         ui::Rect r{cx, cy, cw, ch};
-        atlas::draw9(atlas::get(unlocked ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 24, 12);
+        atlas::draw9(atlas::get(unlocked ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 40, 12);
         world::drawTroopThumb(type, cx + cw / 2, cy + ch * 0.32f, ch * 0.5f);
         font::draw(d.name, cx + cw / 2, cy + ch * 0.58f, 15, kInk, font::Center, false);
         font::draw("x" + std::to_string(S.army[i]), cx + 10, cy + 8, 17, rgba(255, 255, 255));
@@ -925,7 +935,7 @@ void App::drawMap() {
             bool open = lf::campaign::unlocked(S, (int)i);
             int stars = S.campaign.count(ms[i].id) ? S.campaign[ms[i].id] : 0;
             ui::Rect r{cx, cy, cw, ch};
-            atlas::draw9(atlas::get(open ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 24, 12);
+            atlas::draw9(atlas::get(open ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 40, 12);
             font::draw(std::to_string(i + 1) + ". " + ms[i].title, cx + 10, cy + 8, 14, kInk, font::Left, false);
             font::draw("Фонарь врага " + std::to_string(ms[i].LL), cx + 10, cy + 30, 12, kInkSoft, font::Left, false);
             for (int s = 0; s < 3; s++) ui::icon(s < stars ? "icon/star" : "icon/star_off", cx + cw - 64 + s * 20, cy + ch - 18, 20);
@@ -951,7 +961,7 @@ void App::drawMap() {
         y += 30;
         const auto& lg = V::league(S.rating);
         int li = V::leagueIndex(S.rating);
-        atlas::draw9(atlas::get("ui/card"), body.x, y, body.w, 56, 24, 12);
+        atlas::draw9(atlas::get("ui/card"), body.x, y, body.w, 56, 40, 12);
         ui::icon("icon/star", body.x + 30, y + 28, 36, lg.color);
         font::draw(std::string("Лига ") + lg.name + " · рейтинг " + std::to_string(S.rating), body.x + 60, y + 8, 18, kInk, font::Left, false);
         int nextMin = 0;

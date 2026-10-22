@@ -32,6 +32,7 @@ cd engine && LANTERNFALL_ASSETS=assets ./build/lanternfall --size 844x390
 ```bash
 art/fetch_assets.sh /opt/assets                                            # модели Kenney (CC0)
 blender -b --factory-startup -P art/blender/render_sprites.py -- --assets /opt/assets --out art/out
+blender -b --factory-startup -P art/blender/render_ui.py -- --out art/out     # интерфейс из материалов
 python3 art/pack_atlas.py art/out engine/assets/atlas
 python3 art/make_terrain.py engine/assets/art     # земля, ручей, травинки
 python3 art/make_music.py engine/assets/music     # музыка (нужен ffmpeg)

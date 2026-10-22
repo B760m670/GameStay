@@ -343,7 +343,7 @@ void drawFog(const Camera& cam, const std::vector<lf::LightSource>& src, const s
     std::copy(L, L + N * N, gLight);
     gDark = darkness;
     gLightValid = true;
-    const uint32_t fog = rgba(12, 14, 38), red = rgba(150, 20, 30);  // лунная ночь: холодная синева
+    const uint32_t fog = rgba(36, 18, 78), red = rgba(150, 20, 30);  // Мгла: глубокий фиолетовый, а не чернота
     for (int jj = 0; jj < M; jj++)
         for (int ii = 0; ii < M; ii++) {
             float i = (float)(ii - kPad), j = (float)(jj - kPad);
@@ -410,7 +410,7 @@ float lightAt(float x, float y) {
 uint32_t lightTint(float x, float y, uint32_t base) {
     // во тьме — холодный лунный оттенок, у огня — чуть тёплый
     float l = lightAt(x, y), k = gDark * (1 - l) * 0.85f;
-    float r = 1 - k * 0.62f, g = 1 - k * 0.64f, bl = 1 - k * 0.38f;
+    float r = 1 - k * 0.5f, g = 1 - k * 0.62f, bl = 1 - k * 0.22f;
     if (l > 0.5f) { float w = (l - 0.5f) * 0.12f; r = std::min(1.f, r + w); bl -= w; }
     auto ch = [](uint32_t c, int sh, float m) { return (uint32_t)std::clamp((float)((c >> sh) & 255) * m, 0.f, 255.f); };
     return ch(base, 0, r) | ch(base, 8, g) << 8 | ch(base, 16, bl) << 16 | (base & 0xff000000u);

@@ -52,7 +52,7 @@ wx, wy = np.meshgrid(ax, ax)
 
 # ---------- трава ----------
 n1, n2, n3 = fbm(1), fbm(20), fbm(40)
-lush, light, dark, sun = col(74, 136, 56), col(104, 158, 62), col(50, 104, 46), col(136, 162, 72)
+lush, light, dark, sun = col(72, 150, 48), col(108, 178, 58), col(46, 116, 42), col(150, 182, 66)
 img = mix(lush, dark, smooth(0.45, 0.75, n1))
 img = mix(img, light, smooth(0.55, 0.8, n2) * 0.8)
 img = mix(img, sun, smooth(0.68, 0.85, n3) * 0.6)

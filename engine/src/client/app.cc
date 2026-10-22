@@ -107,7 +107,7 @@ void App::drawToasts(float dt) {
         float a = std::clamp(std::min(tt.t / 0.4f, (2.6f - tt.t) / 0.2f), 0.f, 1.f);
         float w = font::measure(tt.text, 17) + 36;
         float x = cam.w / 2 - w / 2;
-        atlas::draw9(atlas::get("ui/panel_dark"), x, y, w, 34, 28, 12, rgba(255, 255, 255, (int)(235 * a)));
+        atlas::draw9(atlas::get("ui/panel_dark"), x, y, w, 34, 70, 17, rgba(255, 255, 255, (int)(235 * a)));
         font::draw(tt.text, cam.w / 2, y + 7, 17, gfx::withAlpha(tt.color, a), font::Center);
         y += 40;
     }
@@ -155,7 +155,7 @@ bool App::drawDialogue() {
     std::string text = line.text;
     float bw = std::min(cam.w - 2 * safeX - 20, 760.f), bh = 150;
     float bx = cam.w / 2 - bw / 2, by = cam.h - bh - safeB - 8;
-    atlas::draw9(atlas::get("ui/panel"), bx, by, bw, bh, 28, 14);
+    atlas::draw9(atlas::get("ui/panel"), bx, by, bw, bh, 70, 24);
     float tx = bx + 22;
     bool named = sp.name && *sp.name;
     if (named) {

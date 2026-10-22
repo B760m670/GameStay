@@ -22,7 +22,12 @@ SS = 4  # суперсэмплинг для процедурной график�
 sprites = []  # (name, image, pivot_x, pivot_y)
 
 
+UI3D = {}  # ui/<имя> -> элемент интерфейса, отрендеренный в Blender (заменяет процедурный)
+
+
 def add(name, img, px=None, py=None, trim=True):
+    if name in UI3D:
+        img, px, py, trim = UI3D[name], None, None, False
     img = img.convert("RGBA")
     if px is None:
         px, py = img.width / 2, img.height / 2
@@ -65,6 +70,17 @@ def outlined(img, width=7, color=(28, 16, 36)):
     out.alpha_composite(big)
     return out
 
+
+from PIL import ImageEnhance  # noqa: E402
+
+for png in sorted(glob.glob(os.path.join(SRC, "ui", "*.png"))):
+    im = Image.open(png).convert("RGBA")
+    rgb = ImageEnhance.Contrast(ImageEnhance.Color(im.convert("RGB")).enhance(1.25)).enhance(1.06)
+    rgb.putalpha(im.getchannel("A"))
+    UI3D["ui/" + os.path.basename(png)[:-4]] = outlined(rgb, width=3)
+for extra in ("badge", "shelf", "round_red"):  # новые элементы, которых нет в процедурном наборе
+    if "ui/" + extra in UI3D:
+        add("ui/" + extra, UI3D["ui/" + extra])
 
 ICON3D = {}
 for png in sorted(glob.glob(os.path.join(SRC, "icons", "*.png"))):
