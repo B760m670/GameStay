@@ -56,8 +56,9 @@ def material(name, colors, rough=0.65, metal=0.0, kind="noise", scale=6.0, bump=
         elif kind == "wave":
             tex = N.new("ShaderNodeTexWave")
             tex.bands_direction = "X"
-            tex.inputs["Distortion"].default_value = 6.0
-            tex.inputs["Detail"].default_value = 3.0
+            tex.inputs["Distortion"].default_value = 4.0
+            tex.inputs["Detail"].default_value = 2.0
+            scale *= 4  # частые тонкие волокна вместо крупных полос
         else:
             tex = N.new("ShaderNodeTexNoise")
             tex.inputs["Detail"].default_value = 6.0
@@ -79,7 +80,7 @@ def material(name, colors, rough=0.65, metal=0.0, kind="noise", scale=6.0, bump=
         mix = N.new("ShaderNodeMix")
         mix.data_type = "RGBA"
         mix.blend_type = "OVERLAY"
-        mix.inputs["Factor"].default_value = 0.9 if kind == "brick" else 0.35
+        mix.inputs["Factor"].default_value = {"brick": 0.9, "wave": 0.2}.get(kind, 0.35)  # волокно дерева — едва заметное
         L.new(color, mix.inputs["A"])
         L.new(tex.outputs["Color"] if kind == "brick" else tex.outputs["Fac"], mix.inputs["B"])
         color = mix.outputs["Result"]
