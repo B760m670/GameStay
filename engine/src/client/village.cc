@@ -558,7 +558,8 @@ void App::drawVillageHud() {
     // ── ночь: плашка-таймер под состоянием (касание — окно ночи) ──
     {
         bool due = V::nightDue(S, tnow);
-        std::string text = due ? "Мгла у ворот!" : "Ночь через " + fmtTime((S.nightAt - tnow) / 1000.0);
+        std::string text = !V::nightsActive(S) ? "Ночи — после первой обороны"
+                         : due ? "Мгла у ворот!" : "Ночь через " + fmtTime((S.nightAt - tnow) / 1000.0);
         float x = safeX, y = top + 126, w = 58 + font::measure(text, 17) + 18;
         ui::Rect r{x, y, w, 44};
         bool blink = due && std::fmod(t, 1.2f) < 0.8f;
@@ -996,8 +997,8 @@ void App::drawArmy() {
             ui::Rect pill{cx + 10, cy + ch - 46, cw - 20, 36};
             atlas::draw9(atlas::get("ui/btn_gold"), pill.x, pill.y, pill.w, pill.h, 56, 18);
             costLabel(lf::Res::Aether, cost, pill.x + pill.w / 2, pill.y + 8, 17, S.aether >= cost ? 0xffffffffu : kBad, 1);
-        } else if (open) font::draw(S.heroLevel >= lf::kHeroMaxLevel ? "Максимум" : "Улучши Фонарь", cx + cw / 2, cy + ch - 36, 14, kInkSoft, font::Center, false);
-        if (!open) ui::lockOverlay(r, "Фонарь ур. " + std::to_string(lf::kHeroUnlockLantern));
+        } else if (open) font::draw(S.heroLevel >= lf::kHeroMaxLevel ? "Максимум" : "Улучши Штаб", cx + cw / 2, cy + ch - 36, 14, kInkSoft, font::Center, false);
+        if (!open) ui::lockOverlay(r, "Штаб ур. " + std::to_string(lf::kHeroUnlockLantern));
         if (ui::tapped(r)) {
             auto res = V::upgradeHero(S);
             if (res.ok) { toast("Фонарщик: уровень " + std::to_string(S.heroLevel) + "!", kGold); audio::play("upgrade", 0.9f); save(); }
@@ -1062,7 +1063,7 @@ void App::drawMap() {
             ui::Rect r{cx, cy, cw, ch};
             atlas::draw9(atlas::get(open ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 40, 12);
             font::draw(std::to_string(i + 1) + ". " + ms[i].title, cx + 12, cy + 10, 16, open ? kInk : kInkSoft, font::Left, false);
-            font::draw("Фонарь врага ур. " + std::to_string(ms[i].LL), cx + 12, cy + 36, 14, kInkSoft, font::Left, false);
+            font::draw("Штаб врага ур. " + std::to_string(ms[i].LL), cx + 12, cy + 36, 14, kInkSoft, font::Left, false);
             if (open) for (int s = 0; s < 3; s++) ui::icon(s < stars ? "icon/star" : "icon/star_off", cx + cw - 70 + s * 24, cy + ch - 20, 24);
             else {
                 ui::icon("icon/lock", cx + cw - 24, cy + ch - 24, 28);
@@ -1114,7 +1115,7 @@ void App::drawNight() {
     bool due = V::nightDue(S, now());
     float y = body.y + 4;
     std::string text = "Каждую ночь Мгла проверяет твой свет. Порождения выходят из тьмы со всех сторон, а оборона сражается сама. "
-                       "Если Фонарь устоит до рассвета — получишь Осколки и ресурсы. Разрушенные хранилища теряют часть запасов.";
+                       "Если Штаб устоит до рассвета — получишь Осколки и ресурсы. Разрушенные хранилища теряют часть запасов.";
     for (const auto& l : font::wrap(text, 17, body.w - 10)) { font::draw(l, body.x + 4, y, 17, kInk, font::Left, false); y += font::lineHeight(17); }
     y += 8;
     font::draw("Пережито ночей: " + std::to_string(S.nights) + (due ? ". Мгла уже у порога!" : ". Следующая через " + fmtTime((S.nightAt - now()) / 1000.0)),

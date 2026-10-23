@@ -12,7 +12,7 @@ namespace lf {
 
 constexpr int kGrid = 44;
 constexpr int kBorder = 2;
-constexpr int kMaxLantern = 6;
+constexpr int kMaxLantern = 5;  // пока игра до 5-го уровня штаба
 constexpr float kBattleTime = 180.f;
 constexpr float kNightTime = 90.f;
 constexpr long long kNightIntervalMs = 20LL * 60 * 1000;
@@ -236,6 +236,7 @@ Result train(VillageState& S, TroopType t, long long now);
 void cancelTrain(VillageState& S, int index);
 void tick(VillageState& S, long long now);
 bool nightDue(const VillageState& S, long long now);
+bool nightsActive(const VillageState& S);  // ночи начинаются только после первой оборонительной постройки
 // Опыт: сколько нужно до следующего уровня, начислить (с наградой за уровни).
 long long xpToNext(int level);
 int addXp(VillageState& S, long long amount);

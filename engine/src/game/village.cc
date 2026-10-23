@@ -39,23 +39,14 @@ void finishBuild(BuildingRec& b, long long now) {
 VillageState create(long long now) {
     VillageState S;
     S.created = now;
-    S.ore = 1500;
-    S.aether = 1500;
+    S.ore = 1000;      // ровно вместимость Штаба 1-го уровня: складов ещё нет
+    S.aether = 1000;
     S.shards = 15;
     S.trainTickAt = now;
     S.nightAt = now + kFirstNightMs;
-    auto add = [&](BType t, int x, int y) { S.buildings.push_back(make(S, t, x, y, 1, now)); };
-    add(BType::Lantern, 20, 20);
-    add(BType::OreMine, 15, 19);
-    add(BType::AetherWell, 26, 21);
-    add(BType::OreStore, 20, 25);
-    add(BType::AetherStore, 21, 15);
-    add(BType::Barracks, 24, 24);
-    add(BType::Camp, 16, 23);
-    add(BType::Ballista, 24, 17);
-    add(BType::BuilderHut, 18, 17);
-    add(BType::BuilderHut, 18, 26);
-    S.army[(int)TroopType::Torch] = 10;
+    // Новая игра — только Штаб; остальные постройки открываются его уровнем.
+    S.buildings.push_back(make(S, BType::Lantern, 20, 20, 1, now));
+    S.army[(int)TroopType::Torch] = 10;  // стартовый отряд: можно сразу сходить в первый поход
     seedObstacles(S, 1234, 18);
     S.obstacleAt = now + kObstacleEveryMs;
     return S;
@@ -112,7 +103,7 @@ bool spawnObstacle(VillageState& S, Rng& rng) {
     int s = obstacleSize(k);
     for (int attempt = 0; attempt < 60; attempt++) {
         int x = kBorder + rng.range(kGrid - 2 * kBorder - s + 1), y = kBorder + rng.range(kGrid - 2 * kBorder - s + 1);
-        if (std::hypot(x + s / 2.f - 22, y + s / 2.f - 22) < 6) continue;  // не у самого Фонаря
+        if (std::hypot(x + s / 2.f - 22, y + s / 2.f - 22) < 6) continue;  // не у самого Штаба
         if (!cellsFree(S, x, y, s)) continue;
         S.obstacles.push_back({S.nextId++, k, x, y});
         return true;
@@ -179,7 +170,7 @@ long long addRes(VillageState& S, Res r, long long amount) {
 }
 
 Builders builders(const VillageState& S, long long now) {
-    int total = 0, busy = 0;
+    int total = 1, busy = 0;  // один строитель при Штабе, остальные — из хижин
     for (const auto& b : S.buildings) {
         if (b.type == BType::BuilderHut && b.level >= 1) total++;
         if (b.busyUntil > now) busy++;
@@ -275,8 +266,8 @@ std::pair<Res, int> buildCost(const VillageState& S, BType t) {
 Result canBuild(const VillageState& S, BType t, long long now) {
     int LL = lanternLevel(S);
     int lim = limit(t, LL);
-    if (lim == 0) return Result::no("Нужен Фонарь ур. " + std::to_string(unlockLantern(t)));
-    if (countOf(S, t) >= lim) return Result::no("Лимит " + std::to_string(lim) + " — улучши Фонарь");
+    if (lim == 0) return Result::no("Нужен Штаб ур. " + std::to_string(unlockLantern(t)));
+    if (countOf(S, t) >= lim) return Result::no("Лимит " + std::to_string(lim) + " — улучши Штаб");
     auto c = buildCost(S, t);
     if (S.res(c.first) < c.second) return Result::no("Не хватает ресурсов");
     if (B(t).time[0] > 0 && builders(S, now).free < 1) return Result::no("Все строители заняты");
@@ -319,7 +310,7 @@ UpgradeInfo upgradeInfo(const VillageState& S, int id, long long now) {
     int next = b->level + 1;
     if (b->busyUntil > now) { info.reason = "Уже строится"; return info; }
     if (next > d.maxLevel) { info.reason = "Максимальный уровень"; info.max = true; return info; }
-    if (next > maxLevelAllowed(b->type, lanternLevel(S))) { info.reason = "Нужен Фонарь выше"; return info; }
+    if (next > maxLevelAllowed(b->type, lanternLevel(S))) { info.reason = "Нужен Штаб выше"; return info; }
     info.cost = d.cost[next - 1];
     info.time = d.time[next - 1];
     info.res = d.costRes;
@@ -443,9 +434,9 @@ int heroUpgradeCost(int toLevel) { return 1500 * (toLevel - 1) * (toLevel - 1) +
 float heroMult(int level) { return 1.f + 0.1f * (std::max(1, level) - 1); }
 
 Result upgradeHero(VillageState& S) {
-    if (!heroUnlocked(S)) return Result::no("Герой откроется на Фонаре " + std::to_string(kHeroUnlockLantern));
+    if (!heroUnlocked(S)) return Result::no("Герой откроется на Штабе ур. " + std::to_string(kHeroUnlockLantern));
     int next = S.heroLevel + 1;
-    if (next > heroMaxLevel(S)) return Result::no(S.heroLevel >= kHeroMaxLevel ? "Максимальный уровень" : "Улучши Фонарь");
+    if (next > heroMaxLevel(S)) return Result::no(S.heroLevel >= kHeroMaxLevel ? "Максимальный уровень" : "Улучши Штаб");
     if (S.aether < heroUpgradeCost(next)) return Result::no("Не хватает Эфира");
     S.aether -= heroUpgradeCost(next);
     S.heroLevel = next;
@@ -508,7 +499,7 @@ const std::vector<TaskDef>& taskDefs() {
         {"stars", "Звёздный налёт", "Получи звёзд в боях: %s", Metric::Stars, {5, 30, 150}, {3, 8, 20}, {15, 40, 100}},
         {"nights", "Страж ночи", "Переживи ночей Мглы: %s", Metric::Nights, {1, 10, 50}, {3, 8, 20}, {15, 40, 100}},
         {"trained", "Наставник", "Обучи войск: %s", Metric::Trained, {20, 200, 1000}, {2, 5, 10}, {10, 25, 60}},
-        {"lantern", "Ярче Мглы", "Улучши Фонарь до уровня %s", Metric::Lantern, {2, 4, 6}, {5, 12, 30}, {25, 60, 150}},
+        {"lantern", "Растущий город", "Улучши Штаб до уровня %s", Metric::Lantern, {2, 3, 5}, {5, 12, 30}, {25, 60, 150}},
     };
     return v;
 }
@@ -554,6 +545,8 @@ bool claimTask(VillageState& S, const TaskDef& t) {
 }
 
 void tick(VillageState& S, long long now) {
+    // пока нет обороны, ночь не наступает; после первой — полный срок до первой ночи
+    if (!nightsActive(S)) S.nightAt = std::max(S.nightAt, now + kFirstNightMs);
     if (S.obstacleAt == 0) S.obstacleAt = now + kObstacleEveryMs;
     for (int guard = 0; now >= S.obstacleAt && guard < 8; guard++) {  // за долгое отсутствие — не больше 8 за раз
         Rng rng((int32_t)(S.obstacleAt / 1000));
@@ -593,7 +586,12 @@ void tick(VillageState& S, long long now) {
     S.trainTickAt = now;
 }
 
-bool nightDue(const VillageState& S, long long now) { return now >= S.nightAt; }
+bool nightsActive(const VillageState& S) {
+    for (const auto& b : S.buildings)
+        if (b.level >= 1 && b.def().category == Category::Defense) return true;
+    return false;
+}
+bool nightDue(const VillageState& S, long long now) { return nightsActive(S) && now >= S.nightAt; }
 void scheduleNextNight(VillageState& S, long long now) { S.nightAt = now + kNightIntervalMs; }
 
 std::vector<LayoutItem> layout(const VillageState& S, float lootFrac) {

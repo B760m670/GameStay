@@ -19,8 +19,34 @@ struct Reg { Reg(const char* n, std::function<void()> f) { registry().push_back(
 #define TEST(name) static void name(); static Reg reg_##name(#name, name); static void name()
 #define CHECK(cond, ...) do { if (!(cond)) { failures++; std::printf("  FAIL %s:%d: %s ", __FILE__, __LINE__, #cond); std::printf(__VA_ARGS__); std::printf("\n"); } } while (0)
 
+// Деревня с набором построек (как была старая стартовая): для проверок стройки, армии, обороны.
+static VillageState testVillage(long long now) {
+    auto S = village::create(now);
+    auto add = [&](BType t, int x, int y) {
+        BuildingRec b;
+        b.id = S.nextId++;
+        b.type = t;
+        b.x = x;
+        b.y = y;
+        b.level = 1;
+        b.accAt = now;
+        S.buildings.push_back(b);
+    };
+    add(BType::OreMine, 15, 19);
+    add(BType::AetherWell, 26, 21);
+    add(BType::OreStore, 20, 25);
+    add(BType::AetherStore, 21, 15);
+    add(BType::Barracks, 24, 24);
+    add(BType::Camp, 16, 23);
+    add(BType::Ballista, 24, 17);
+    add(BType::BuilderHut, 18, 17);
+    add(BType::BuilderHut, 18, 26);
+    S.ore = S.aether = 1500;
+    return S;
+}
+
 TEST(start_village_valid) {
-    auto S = village::create(0);
+    auto S = testVillage(0);
     for (const auto& b : S.buildings) {
         auto r = village::canPlace(S, b.type, b.x, b.y, b.id);
         CHECK(r.ok, "%s: %s", B(b.type).id, r.reason.c_str());
@@ -28,13 +54,13 @@ TEST(start_village_valid) {
 }
 
 TEST(no_building_in_darkness) {
-    auto S = village::create(0);
+    auto S = testVillage(0);
     CHECK(!village::canPlace(S, BType::Wall, 3, 3).ok, "");
     CHECK(village::canPlace(S, BType::Wall, 19, 19).ok, "");
 }
 
 TEST(build_upgrade_collect) {
-    auto S = village::create(0);
+    auto S = testVillage(0);
     CHECK(village::place(S, BType::Wall, 19, 19, 0).ok, "");
     int lantern = S.buildings[0].id;
     S.ore = 4000;
@@ -47,7 +73,7 @@ TEST(build_upgrade_collect) {
 }
 
 TEST(train_troops) {
-    auto S = village::create(0);
+    auto S = testVillage(0);
     S.army = {};
     CHECK(village::train(S, TroopType::Torch, 0).ok, "");
     village::tick(S, 10000);
@@ -55,7 +81,7 @@ TEST(train_troops) {
 }
 
 TEST(save_load_roundtrip) {
-    auto S = village::create(123);
+    auto S = testVillage(123);
     S.campaign["m1"] = 3;
     S.codex.push_back("ford");
     village::train(S, TroopType::Torch, 123);
@@ -67,7 +93,7 @@ TEST(save_load_roundtrip) {
 }
 
 TEST(basegen_valid_all_levels) {
-    for (int LL = 1; LL <= 6; LL++)
+    for (int LL = 1; LL <= kMaxLantern; LL++)
         for (int seed = 1; seed <= 5; seed++) {
             auto layout = basegen::generate(LL, seed);
             std::set<int> occ;
@@ -134,7 +160,7 @@ TEST(simulation_deterministic) {
 TEST(first_night_survivable) {
     int wins = 0;
     for (int seed = 1; seed <= 6; seed++) {
-        auto S = village::create(0);
+        auto S = testVillage(0);
         auto n = basegen::nightWaves(1, 0, seed);
         BattleOptions o;
         o.mode = BattleMode::Defense;
@@ -172,7 +198,7 @@ TEST(campaign_generates) {
 }
 
 TEST(xp_from_building_and_level_up) {
-    auto S = village::create(0);
+    auto S = testVillage(0);
     long long shards0 = S.shards;
     int lantern = S.buildings[0].id;
     S.ore = 100000;
@@ -186,7 +212,7 @@ TEST(xp_from_building_and_level_up) {
 }
 
 TEST(tasks_progress_and_claim) {
-    auto S = village::create(0);
+    auto S = testVillage(0);
     const auto& t = village::taskDefs()[0];  // постройки
     CHECK(!village::taskReady(S, t), "");
     S.ore = 100000;
@@ -200,7 +226,7 @@ TEST(tasks_progress_and_claim) {
 }
 
 TEST(workshop_research_and_battle_levels) {
-    auto S = village::create(0);
+    auto S = testVillage(0);
     CHECK(!village::canResearch(S, TroopType::Torch, 0).ok, "");
     S.buildings[0].level = 3;  // Фонарь 3 открывает Кузницу
     S.ore = S.aether = 1000000;
@@ -291,7 +317,7 @@ TEST(hero_deploy_flash_and_upgrade) {
     CHECK(B.buildings[def].stunT > 0, "stunned");
     CHECK(!B.heroAbility(), "once per battle");
     // прокачка в деревне
-    auto S = village::create(0);
+    auto S = testVillage(0);
     CHECK(!village::upgradeHero(S).ok, "locked at lantern 1");
     S.buildings[0].level = 3;
     S.aether = 1000000;
@@ -338,7 +364,7 @@ TEST(replay_restores_battle_exactly) {
 }
 
 TEST(obstacles_block_clear_and_grow) {
-    auto S = village::create(0);
+    auto S = testVillage(0);
     CHECK(S.obstacles.size() >= 12, "n=%zu", S.obstacles.size());
     const auto o = S.obstacles[0];
     // нельзя строить поверх препятствия (свет не важен: проверяем, что причина — препятствие или тьма)
@@ -365,4 +391,15 @@ int main() {
     }
     std::printf("%s: %d failures\n", failures ? "FAILED" : "PASSED", failures);
     return failures ? 1 : 0;
+}
+
+TEST(new_game_starts_with_hq_only) {
+    auto S = village::create(0);
+    CHECK(S.buildings.size() == 1 && S.buildings[0].type == BType::Lantern, "buildings=%d", (int)S.buildings.size());
+    CHECK(village::builders(S, 0).total == 1, "the HQ provides one builder");
+    CHECK(village::lanternLevel(S) == 1 && B(BType::Lantern).maxLevel == kMaxLantern && kMaxLantern == 5, "");
+    // ночи ждут первой обороны
+    village::tick(S, 10LL * 3600 * 1000);
+    CHECK(!village::nightsActive(S) && !village::nightDue(S, 10LL * 3600 * 1000), "");
+    CHECK(village::canBuild(S, BType::Ballista, 0).ok, "first defence is available at HQ level 1");
 }

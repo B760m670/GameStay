@@ -365,7 +365,7 @@ void App::startAiRaid() {
     o.spells = lf::village::spellCharges(S.level);
     o.heroLevel = lf::village::heroUnlocked(S) ? S.heroLevel : 0;
     o.seed = seed;
-    std::string name = lf::basegen::rivalName(rng) + " · Фонарь " + std::to_string(eLL);
+    std::string name = lf::basegen::rivalName(rng) + " · Штаб " + std::to_string(eLL);
     enterBattle(o, BattleKind::Raid, name);
 }
 
