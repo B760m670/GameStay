@@ -155,12 +155,14 @@ std::vector<Detail>& meadow() {
     static bool built = false;
     if (built) return v;
     built = true;
-    static const char* kinds[] = {"b/decor_grass", "b/decor_grass2", "b/decor_grass3", "b/decor_grass", "b/decor_fl_purple", "b/decor_fl_red",
-                                  "b/decor_fl_yellow", "b/decor_pebble", "b/decor_pebble2", "b/decor_shroom", "b/decor_bush_small"};
+    // рисованные мелочи луга (art/source/generated/sheet_ground): трава, высокая трава, папоротник, колокольчики, маки,
+    // ромашки, камешки, грибы — трава чаще прочего
+    static const char* kinds[] = {"b/decor_gd1", "b/decor_gd10", "b/decor_gd1", "b/decor_gd8", "b/decor_gd11", "b/decor_gd16",
+                                  "b/decor_gd5", "b/decor_gd1", "b/decor_gd3", "b/decor_gd6", "b/decor_gd10"};
     for (int j = lf::kBorder; j < lf::kGrid - lf::kBorder; j++)
         for (int i = lf::kBorder; i < lf::kGrid - lf::kBorder; i++) {
             uint32_t h = hash2(i * 3 + 7, j * 5 + 11);
-            if (h % 100 >= 30) continue;
+            if (h % 100 >= 15) continue;  // реже: луг не должен спорить с постройками
             const atlas::Sprite* sp = atlas::get(kinds[(h >> 8) % 11]);
             if (!sp) continue;
             v.push_back({sp, i + 0.2f + ((h >> 12) & 15) / 25.f, j + 0.2f + ((h >> 16) & 15) / 25.f});
@@ -193,7 +195,7 @@ void drawMeadow(const Camera& cam, float t) {
         if (p.x < -40 || p.x > cam.w + 40 || p.y < -40 || p.y > cam.h + 40) continue;
         float gust = std::sin(t * 1.7f - (d.x + d.y) * 0.35f) * 0.5f + 0.5f;
         float shear = (gust * gust * 0.22f + std::sin(t * 5 + d.x * 3) * 0.03f);
-        drawSway(d.sp, p.x, p.y, cam.zoom * 0.5f, shear, 0xffffffffu);
+        drawSway(d.sp, p.x, p.y, cam.zoom * 0.4f, shear, 0xffffffffu);
     }
     // бабочки у Фонаря
     static const uint32_t wings[] = {rgba(255, 220, 90), rgba(250, 250, 240), rgba(255, 150, 70), rgba(170, 200, 255)};
@@ -255,34 +257,32 @@ const std::vector<Decor>& decor() {
         v.push_back({sp, x, y, sz, x + y + sz + dz, fx});
         mark(x, y, sz);
     };
-    // мосты там, где тропы пересекают ручей
-    put("b/decor_bridge_a", 22.4f, streamCenter(22.4f), 2, 0, -0.6f);
-    put("b/decor_bridge_b", streamCenter(22.4f), 22.4f, 2, 0, -0.6f);
-    put("b/decor_sign", 24.1f, 45.0f, 1);
+    // мосты там, где тропы пересекают ручей (рисованный лист art/source/generated/sheet_special)
+    put("b/decor_sp1", 22.4f, streamCenter(22.4f), 2, 0, -0.6f);
+    put("b/decor_sp1m", streamCenter(22.4f), 22.4f, 2, 0, -0.6f);
     // кувшинки
     const float lil[][2] = {{47.4f, 49.4f}, {49.8f, 47.6f}, {49.3f, 50.1f}, {47.0f, 47.9f}, {50.6f, 49.0f}, {12.5f, streamCenter(12.5f)}, {streamCenter(31.f), 31.f}};
     for (int i = 0; i < 7; i++) put(i % 2 ? "b/decor_lily_small" : "b/decor_lily", lil[i][0], lil[i][1], 1, 2, -1.f);
-    // поле с урожаем слева
-    for (int yy = 26; yy < 35; yy++)
-        for (int xx = -7; xx <= -3; xx++) {
-            const char* c = xx == -5 ? "b/decor_pumpkin" : (yy % 3 == 0 ? "b/decor_corn" : "b/decor_wheat");
-            put(c, xx + 0.5f, yy + 0.5f, 1);
-        }
-    for (int yy = 25; yy < 36; yy += 1) put("b/decor_fence_a", -1.6f, yy + 0.5f, 1);
-    // стоянка путников: палатка, костёр, бревно
-    put("b/decor_tent", -5.5f, 11.f, 2);
-    put("b/decor_campfire", -3.f, 13.f, 1, 1);
-    put("b/decor_log_seat", -2.f, 14.2f, 1);
+    // тыквенные грядки слева
+    for (int yy = 26; yy < 35; yy += 2)
+        for (int xx = -7; xx <= -3; xx += 2) put("b/decor_sp7", xx + 0.5f, yy + 0.5f + (xx & 2) * 0.25f, 1);
+    // стоянка путников: палатка, костёр с указателем, скамья из бревна
+    put("b/decor_sp3", -5.5f, 11.f, 2);
+    put("b/decor_sp2", -3.f, 13.f, 1, 1);
+    put("b/decor_sp9", -2.f, 14.6f, 1);
     // руины старого маяка
-    put("b/decor_ruin_ring", 6.f, -5.5f, 2);
-    put("b/decor_ruin_column", 9.f, -3.5f, 1);
-    put("b/decor_ruin_column", 3.f, -3.2f, 1);
-    put("b/decor_ruin_obelisk", 11.f, -6.5f, 1);
-    put("b/decor_ruin_head", 7.5f, -7.8f, 1);
-    put("b/decor_stones", 1.5f, -6.f, 1);
+    put("b/decor_sp6", 6.f, -5.5f, 2);
+    put("b/decor_sp4", 9.f, -3.5f, 1);
+    put("b/decor_sp5", 3.f, -3.2f, 1);
+    put("b/decor_sp8", 11.f, -6.5f, 1);
+    put("b/decor_prop3", 1.5f, -6.f, 1);
     // лес и скалы по остальному краю
-    static const char* trees[] = {"b/decor_oak", "b/decor_oak_dark", "b/decor_fat", "b/decor_detailed", "b/decor_pine", "b/decor_pine2", "b/decor_cone", "b/decor_tall"};
-    static const char* small[] = {"b/decor_rock_tall", "b/decor_rock_small", "b/decor_bush", "b/decor_bush2", "b/decor_stump", "b/decor_mushrooms", "b/decor_logs"};
+    // рисованный декор (art/source/generated/sheet_trees, sheet_props): дуб, ель, берёза, дуб, рябина, яблоня;
+    // скала, валуны, кусты, цветущий пень, пень, грибы
+    static const char* trees[] = {"b/decor_tree1", "b/decor_tree2", "b/decor_tree3", "b/decor_tree5", "b/decor_tree2", "b/decor_tree6",
+                                  "b/decor_tree7", "b/decor_tree2"};
+    static const char* small[] = {"b/decor_prop2", "b/decor_prop3", "b/decor_prop4", "b/decor_prop5", "b/decor_prop6", "b/decor_prop7",
+                                  "b/decor_prop8"};
     auto blocked = [&](float x, float y) {
         if (waterDist(x, y) < 1.3f) return true;                                         // ручей с берегами
         if (y > lf::kGrid - 1 && std::fabs(x - 22.4f) < 1.6f) return true;               // тропы
@@ -306,7 +306,7 @@ const std::vector<Decor>& decor() {
             if (!ok) continue;
             for (int dy = 0; dy < sz; dy++)
                 for (int dx = 0; dx < sz; dx++) used[idx(i + dx, j + dy)] = 1;
-            const char* name = big ? ((h >> 13) % 6 == 0 ? "b/decor_rock_large" : trees[(h >> 15) % 8]) : small[(h >> 15) % 7];
+            const char* name = big ? ((h >> 13) % 6 == 0 ? "b/decor_prop1" : trees[(h >> 15) % 8]) : small[(h >> 15) % 7];
             v.push_back({name, (float)i, (float)j, sz, i + j + sz * 1.f});
         }
     return v;

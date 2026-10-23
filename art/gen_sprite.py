@@ -65,7 +65,7 @@ def hue_sat(x):
     return hh, d / (mx + 1e-6)
 
 
-def cut(img):
+def cut(img, shadows=False):
     """Фон = область, связанная с краем картинки и близкая к модели фона. Генератор рисует фон с градиентом и виньеткой,
     поэтому модель уточняется итерациями: заливка -> квадратичная модель по залитому -> снова заливка.
     Ореолы света — пиксели фонового оттенка светлее фона — восстанавливаются как полупрозрачное тёплое свечение."""
@@ -125,6 +125,22 @@ def cut(img):
         tmap = np.where(grown & ~background, bt, tmap)
         background = grown
     halo = background & ((va_ > vb_ + 12) | (best_t > 0.12)) & (best_r < 40)  # свет поверх фона
+    # тени, нарисованные генератором на фоне (для декора): фон, затемнённый к чёрному, — становится мягкой тенью
+    shadow = np.zeros_like(background)
+    if shadows:
+        k = (a * model).sum(2) / np.maximum((model ** 2).sum(2), 1)
+        sres = np.sqrt(((a - k[..., None] * model) ** 2).sum(2))
+        scand = (k > 0.25) & (k < 0.94) & (sres < 20) & (hd < 35)
+        sh = background.copy()
+        for _ in range(400):
+            g2 = sh.copy()
+            g2[1:] |= sh[:-1]; g2[:-1] |= sh[1:]; g2[:, 1:] |= sh[:, :-1]; g2[:, :-1] |= sh[:, 1:]
+            g2 &= scand | sh
+            if (g2 == sh).all():
+                break
+            sh = g2
+        shadow = sh & ~background
+        background = background | shadow
     # бахрома: пиксели фонового оттенка у самой границы (кромка, смешанная с фоном)
     near_bg = background.copy()
     for _ in range(3):
@@ -145,6 +161,9 @@ def cut(img):
     excess = np.clip(mn - a2[..., 1], 0, None) * spill
     a2[..., 0] -= excess * 0.85
     a2[..., 2] -= excess
+    if shadows:
+        a2[shadow] = [24, 18, 30]
+        alpha[shadow] = np.clip((1 - k[shadow]) * 0.85, 0, 0.6)
     gcol = np.stack(glows)[glow_id[halo]]
     a2[halo] = gcol
     alpha[halo] = np.maximum(alpha[halo], np.clip(best_t[halo], 0, 1) * 0.8)
@@ -166,7 +185,7 @@ def main():
     raw, name, size = sys.argv[1], sys.argv[2], float(sys.argv[3])
     out = sys.argv[4] if len(sys.argv) > 4 else "art/out"
     fill = float(os.environ.get("FILL", "1.0"))
-    im = cut(Image.open(raw))
+    im = cut(Image.open(raw), shadows=os.environ.get("SHADOWS") == "1")  # SHADOWS=1 — нарисованная тень станет мягкой
     al = np.asarray(im)[..., 3]
     (lx, ly), (rx, ry), bottom = base_diamond(al)
     width = rx - lx
