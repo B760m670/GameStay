@@ -55,7 +55,11 @@ for udir in sorted(glob.glob(os.path.join(SRC, "units", "*"))):
     meta = json.load(open(os.path.join(udir, "meta.json")))
     unit = os.path.basename(udir)
     for png in sorted(glob.glob(os.path.join(udir, "*.png"))):
-        add(f"u/{unit}/{os.path.basename(png)[:-4]}", Image.open(png), *meta["pivot"])
+        stem = os.path.basename(png)[:-4]
+        parts = stem.rsplit("_", 2)  # anim_dir_frame
+        if len(parts) == 3 and parts[1].isdigit() and int(parts[1]) > 4:
+            continue  # направления 5..7 — зеркала 3..1, движок рисует их отражёнными
+        add(f"u/{unit}/{stem}", Image.open(png), *meta["pivot"])
 
 # ---------- 3D-иконки с обводкой (переопределяют плоские ниже) ----------
 def outlined(img, width=7, color=(28, 16, 36)):

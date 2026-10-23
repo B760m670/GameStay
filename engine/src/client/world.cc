@@ -536,10 +536,13 @@ void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level
 }
 
 namespace {
-// Спрайт юнита: anim — move (8 кадров), attack (6), idle (4), die (5).
-const atlas::Sprite* unitSprite(const std::string& unit, const char* anim, float angle, int frame) {
+// Спрайт юнита: anim — move (8 кадров), attack (6), idle (4), die (5). Направления 5..7 — зеркала 3..1 (flip).
+const atlas::Sprite* unitSprite(const std::string& unit, const char* anim, float angle, int frame, bool* flip = nullptr) {
     float deg = angle * 57.2958f;
     int dir = ((int)std::lround((deg - 45.f) / 45.f) % 8 + 8) % 8;
+    bool mirrored = dir > 4;
+    if (mirrored) dir = 8 - dir;
+    if (flip) *flip = mirrored;
     std::string name = "u/" + unit + "/" + anim + "_" + std::to_string(dir) + "_" + std::to_string(frame);
     if (const atlas::Sprite* sp = atlas::get(name)) return sp;
     return atlas::get("u/" + unit + "/move_" + std::to_string(dir) + "_0");
@@ -547,10 +550,11 @@ const atlas::Sprite* unitSprite(const std::string& unit, const char* anim, float
 }  // namespace
 
 void drawUnit(const Camera& cam, const std::string& unit, const std::string& anim, float angle, int frame, float x, float y, float alpha) {
-    const atlas::Sprite* sp = unitSprite(unit, anim.c_str(), angle, frame);
+    bool flip = false;
+    const atlas::Sprite* sp = unitSprite(unit, anim.c_str(), angle, frame, &flip);
     if (!sp) return;
     Vec2 p = cam.toScreen(x, y);
-    atlas::draw(sp, p.x, p.y, cam.zoom * 0.5f, lightTint(x, y, rgba(255, 255, 255, (int)(255 * alpha))));
+    atlas::draw(sp, p.x, p.y, cam.zoom * 0.5f, lightTint(x, y, rgba(255, 255, 255, (int)(255 * alpha))), flip);
 }
 
 void drawParticle(const Camera& cam, const Particle& p) {
@@ -585,18 +589,19 @@ void drawTroop(const Camera& cam, const lf::BTroop& tr, float t, float deadT) {
         anim = "move";
         f = (int)(tr.animT * 12 * tr.def->speed / 1.5f + tr.bob * 4) % 8;
     }
-    const atlas::Sprite* sp = unitSprite(tr.def->id, anim, tr.angle, f);
+    bool flip = false;
+    const atlas::Sprite* sp = unitSprite(tr.def->id, anim, tr.angle, f, &flip);
     uint32_t col = lightTint(tr.x, tr.y, rgba(255, 255, 255, (int)(255 * alpha)));
     if (tr.def->haze) {
         glowAt(p.x, p.y - 14 * cam.zoom, 22 * cam.zoom, rgba(150, 90, 220, (int)(60 * alpha)));
         col = rgba(190, 170, 230, (int)(235 * alpha));
     }
-    if (sp) atlas::draw(sp, p.x, p.y, cam.zoom * 0.5f, col);
+    if (sp) atlas::draw(sp, p.x, p.y, cam.zoom * 0.5f, col, flip);
     else ellipseSprite("fx/soft", p.x, p.y - 8 * cam.zoom, 8 * cam.zoom, 10 * cam.zoom, tr.def->color);
     if (deadT >= 0) return;
     if (tr.hitT > 0 && sp) {
         gfx::setBlend(gfx::Blend::Add);
-        atlas::draw(sp, p.x, p.y, cam.zoom * 0.5f, rgba(255, 120, 120, 160));
+        atlas::draw(sp, p.x, p.y, cam.zoom * 0.5f, rgba(255, 120, 120, 160), flip);
         gfx::setBlend(gfx::Blend::Alpha);
     }
     if (tr.hp < tr.maxHp || tr.type == lf::TroopType::Hero) {
