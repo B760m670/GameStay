@@ -1,5 +1,6 @@
 #pragma once
 // Ввод: касания и мышь приводятся к единому потоку событий в логических точках.
+#include <string>
 #include <vector>
 
 struct sapp_event;
@@ -16,6 +17,9 @@ struct Event {
 
 void handle(const sapp_event* e);
 std::vector<Event> drain();
+// Набранный текст с прошлого кадра (UTF-8), стёртые символы и нажатие «Ввод».
+struct Text { std::string chars; int backspaces = 0; bool enter = false; };
+Text takeText();
 // Для автотестов: подмешать событие.
 void inject(const Event& e);
 

@@ -6,6 +6,14 @@ namespace input {
 namespace {
 std::vector<Event> queue;
 bool mouseDown = false;
+Text text;
+
+void appendUtf8(std::string& out, uint32_t cp) {
+    if (cp < 0x80) out += (char)cp;
+    else if (cp < 0x800) { out += (char)(0xC0 | (cp >> 6)); out += (char)(0x80 | (cp & 0x3F)); }
+    else if (cp < 0x10000) { out += (char)(0xE0 | (cp >> 12)); out += (char)(0x80 | ((cp >> 6) & 0x3F)); out += (char)(0x80 | (cp & 0x3F)); }
+    else { out += (char)(0xF0 | (cp >> 18)); out += (char)(0x80 | ((cp >> 12) & 0x3F)); out += (char)(0x80 | ((cp >> 6) & 0x3F)); out += (char)(0x80 | (cp & 0x3F)); }
+}
 }
 
 void handle(const sapp_event* e) {
@@ -34,6 +42,13 @@ void handle(const sapp_event* e) {
         case SAPP_EVENTTYPE_MOUSE_MOVE:
             queue.push_back({Type::Move, 0, e->mouse_x * k, e->mouse_y * k});
             break;
+        case SAPP_EVENTTYPE_CHAR:
+            if (e->char_code >= 32 && e->char_code != 127) appendUtf8(text.chars, e->char_code);
+            break;
+        case SAPP_EVENTTYPE_KEY_DOWN:
+            if (e->key_code == SAPP_KEYCODE_BACKSPACE) text.backspaces++;
+            else if (e->key_code == SAPP_KEYCODE_ENTER || e->key_code == SAPP_KEYCODE_KP_ENTER) text.enter = true;
+            break;
         case SAPP_EVENTTYPE_MOUSE_SCROLL:
             queue.push_back({Type::Scroll, 0, e->mouse_x * k, e->mouse_y * k, e->scroll_y});
             break;
@@ -48,5 +63,11 @@ std::vector<Event> drain() {
 }
 
 void inject(const Event& e) { queue.push_back(e); }
+
+Text takeText() {
+    Text t = std::move(text);
+    text = Text{};
+    return t;
+}
 
 }  // namespace input

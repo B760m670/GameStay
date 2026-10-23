@@ -7,6 +7,7 @@
 #include "audio.h"
 #include "font.h"
 #include "gfx.h"
+#include "../platform/platform.h"
 
 namespace ui {
 namespace {
@@ -156,6 +157,61 @@ void bar(const Rect& r, float frac, uint32_t color) {
     frac = std::clamp(frac, 0.f, 1.f);
     atlas::draw9(atlas::get("ui/bar_bg"), r.x - 2, r.y - 2, r.w + 4, r.h + 4, 30, (r.h + 4) / 2);
     if (frac > 0.01f) atlas::draw9(atlas::get("ui/bar_fill"), r.x + 1, r.y + 1, std::max(r.h, (r.w - 2) * frac), r.h - 2, 26, (r.h - 2) / 2, color);
+}
+
+namespace {
+float focusX = -1, focusY = -1;  // поле в фокусе (по положению)
+bool focusSeen = false;
+}
+
+bool textFocused() { return focusX >= 0; }
+
+bool textField(const Rect& r, std::string& text, const std::string& placeholder, int maxRunes) {
+    bool focused = std::fabs(focusX - r.x) < 1 && std::fabs(focusY - r.y) < 1;
+    if (tapped(r) && !focused) {
+        focusX = r.x;
+        focusY = r.y;
+        focused = true;
+        platform::showKeyboard(true);
+        input::takeText();
+    } else if (released && focused && !r.contains(relX, relY) && !hitPrev(relX, relY)) {
+        focusX = focusY = -1;
+        focused = false;
+        platform::showKeyboard(false);
+    }
+    bool submit = false;
+    if (focused) {
+        focusSeen = true;
+        auto in = input::takeText();
+        for (int i = 0; i < in.backspaces && !text.empty(); i++) {
+            size_t k = text.size() - 1;
+            while (k > 0 && (text[k] & 0xC0) == 0x80) k--;
+            text.erase(k);
+        }
+        for (size_t i = 0; i < in.chars.size(); i++) {
+            int runes = 0;
+            for (char c : text) runes += (c & 0xC0) != 0x80;
+            if (runes >= maxRunes) break;
+            text += in.chars[i];
+        }
+        submit = in.enter;
+    }
+    atlas::draw9(atlas::get("ui/bar_bg"), r.x, r.y, r.w, r.h, 30, std::min(18.f, r.h / 2));
+    float ts = std::min(18.f, r.h * 0.5f);
+    // показываем хвост длинного текста
+    std::string shown = text;
+    while (!shown.empty() && font::measure(shown, ts) > r.w - 30) {
+        size_t k = 1;
+        while (k < shown.size() && (shown[k] & 0xC0) == 0x80) k++;
+        shown.erase(0, k);
+    }
+    if (text.empty() && !focused) font::draw(placeholder, r.x + 14, r.y + (r.h - font::lineHeight(ts)) / 2, ts, gfx::rgba(170, 160, 190), font::Left, false);
+    else font::draw(shown, r.x + 14, r.y + (r.h - font::lineHeight(ts)) / 2, ts, 0xffffffffu, font::Left, false);
+    if (focused && std::fmod(uiTime, 1.f) < 0.55f) {
+        float cx = r.x + 16 + font::measure(shown, ts);
+        gfx::fillRect(cx, r.y + r.h * 0.22f, 2, r.h * 0.56f, 0xffffffffu);
+    }
+    return submit;
 }
 
 void icon(const std::string& name, float cx, float cy, float size, uint32_t color) {

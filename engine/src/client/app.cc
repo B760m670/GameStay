@@ -10,6 +10,7 @@
 #include "engine/audio.h"
 #include "engine/font.h"
 #include "engine/gfx.h"
+#include "engine/net.h"
 #include "platform/platform.h"
 #include "world.h"
 
@@ -40,6 +41,17 @@ long long App::now() const { return platform::nowMs(); }
 static std::string savePath() { return platform::saveDir() + "/lanternfall.sav"; }
 
 void App::init() {
+    online.init();
+    online.ensureAccount();
+    if (online.ready()) {
+        online.chatConnect();
+        online.defenses([this](const json::Value& v) {
+            defenseLog = v;
+            int fresh = 0;
+            for (size_t i = 0; i < v.size(); i++) fresh += v[i]["at"].i64() > now() - 24LL * 3600 * 1000;
+            if (fresh > 0) toast("За сутки на тебя нападали: " + std::to_string(fresh), gfx::rgba(255, 140, 130));
+        });
+    }
     splash = gfx::loadTexture(platform::assetDir() + "/art/splash.jpg", true);
     std::vector<unsigned char> settings;
     if (platform::readFile(platform::saveDir() + "/settings.txt", settings) && std::string(settings.begin(), settings.end()).find("mute 1") != std::string::npos)
@@ -69,7 +81,8 @@ void App::save() {
 // Незаконченный бой сохраняется записью действий; пустой файл — боя нет.
 void App::saveBattle() {
     if (scene != Scene::Battle || !bt.b || bt.b->ended || !bt.started) { platform::writeFile(battlePath(), ""); return; }
-    std::string head = "kind " + std::to_string((int)bt.kind) + "\nmission " + std::to_string(bt.missionIdx) + "\ntitle " + bt.title + "\n";
+    std::string head = "kind " + std::to_string((int)bt.kind) + "\nmission " + std::to_string(bt.missionIdx) + "\nmatch " +
+                       std::to_string(bt.onlineMatch) + "\ntitle " + bt.title + "\n";
     platform::writeFile(battlePath(), head + lf::replay::save(bt.rec));
 }
 
@@ -80,16 +93,19 @@ bool App::resumeBattle() {
     lf::replay::Record rec;
     if (!lf::replay::load(s, rec)) return false;
     int kind = 0, mission = -1;
+    long long match = 0;
     std::string title;
     std::istringstream in(s);
     std::string line;
     while (std::getline(in, line)) {
         if (line.rfind("kind ", 0) == 0) kind = std::atoi(line.c_str() + 5);
         else if (line.rfind("mission ", 0) == 0) mission = std::atoi(line.c_str() + 8);
+        else if (line.rfind("match ", 0) == 0) match = std::atoll(line.c_str() + 6);
         else if (line.rfind("title ", 0) == 0) title = line.substr(6);
     }
     if (kind < 0 || kind > 2 || (kind == (int)BattleKind::Mission && (mission < 0 || mission >= (int)lf::campaign::missions().size()))) return false;
     enterBattle(rec.opts, (BattleKind)kind, title, mission, &rec);
+    bt.onlineMatch = match;
     toast("Бой продолжается с того же места", rgba(255, 216, 107));
     return true;
 }
@@ -209,6 +225,7 @@ void App::frame(float dt, float width, float height) {
     safeX = width / height > 1.9f ? 46.f : 14.f;
     safeB = width / height > 1.9f ? 14.f : 8.f;
     if (focus.pending) { cam.focus(focus.x, focus.y, focus.r, focus.maxZ); focus.pending = false; }
+    onlineFrame(dt);
     auto events = input::drain();
     auto world = ui::beginFrame(events);
     if (!dlg.empty() || modal != Modal::None || title) world.clear();
@@ -324,6 +341,12 @@ void App::startMission(int idx) {
 }
 
 void App::startRaid() {
+    if (online.ready()) startOnlineRaid();
+    else startAiRaid();
+}
+
+// Набег на заставу Угасших (база-ИИ): офлайн или когда живых соперников не нашлось.
+void App::startAiRaid() {
     int LL = lf::village::lanternLevel(S);
     int seed = (int)(now() & 0x7fffffff);
     lf::Rng rng(seed);
@@ -338,6 +361,91 @@ void App::startRaid() {
     o.seed = seed;
     std::string name = lf::basegen::rivalName(rng) + " · Фонарь " + std::to_string(eLL);
     enterBattle(o, BattleKind::Raid, name);
+}
+
+// Набег на реального игрока: сначала отправляем свежее сохранение (сервер сверит армию), затем берём соперника.
+void App::startOnlineRaid() {
+    if (searching) return;
+    searching = true;
+    toast("Ищем соперника…", rgba(255, 216, 107));
+    online.pushSave(lf::village::save(S), [this](bool ok, long long dOre, long long dAe, int rating) {
+        if (ok) {
+            S.ore = std::max(0LL, S.ore - dOre);
+            S.aether = std::max(0LL, S.aether - dAe);
+            S.rating = rating;
+        }
+        online.findMatch([this](bool ok, const Online::Match& m, const std::string& err) {
+            searching = false;
+            if (!ok) {
+                toast(err + " — набег на заставу Угасших", rgba(255, 140, 130));
+                startAiRaid();
+                return;
+            }
+            lf::replay::Record snap;
+            if (!lf::replay::load("replay 1\n" + m.snapshot, snap)) { toast("Сервер прислал битую базу", rgba(255, 140, 130)); return; }
+            lf::BattleOptions o;
+            o.layout = snap.opts.layout;
+            o.army = armyMap(S);
+            o.troopLevels = levelMap(S);
+            o.eclipseCharges = lf::eclipseCharges(lf::village::lanternLevel(S));
+            o.spells = lf::village::spellCharges(S.level);
+            o.heroLevel = lf::village::heroUnlocked(S) ? S.heroLevel : 0;
+            o.seed = m.seed;
+            enterBattle(o, BattleKind::Raid, m.name + " · " + std::to_string(m.rating));
+            bt.onlineMatch = m.id;
+        });
+    });
+}
+
+// Итог онлайн-набега считает сервер по записи боя; клиент принимает его сохранение.
+void App::submitOnlineRaid() {
+    bt.awaitingServer = true;
+    long long preOre = S.ore, preAe = S.aether, preShards = S.shards;
+    online.submitAttack(bt.onlineMatch, lf::replay::save(bt.rec), [this, preOre, preAe, preShards](bool ok, const json::Value& v) {
+        bt.awaitingServer = false;
+        if (!ok) {
+            toast(v["error"].s("Нет связи — бой не засчитан"), rgba(255, 140, 130));
+            bt.gotOre = bt.gotAether = bt.gotShards = 0;
+            return;
+        }
+        lf::VillageState fresh;
+        if (lf::village::load(v["save"].s(), fresh)) {
+            int old = S.rating;
+            fresh.levelUps = S.levelUps + std::max(0, fresh.level - S.level);
+            S = fresh;
+            bt.gotOre = std::max(0LL, S.ore - preOre);
+            bt.gotAether = std::max(0LL, S.aether - preAe);
+            bt.gotShards = std::max(0LL, S.shards - preShards);
+            bt.ratingDelta = S.rating - old;
+            if (lf::village::leagueIndex(S.rating) > lf::village::leagueIndex(old))
+                toast(std::string("Новая лига: ") + lf::village::league(S.rating).name + "!", rgba(255, 216, 107));
+        }
+        const auto& r = v["result"];
+        bt.res.stars = (int)r["stars"].i64();
+        bt.res.pct = (int)r["pct"].i64();
+        bt.res.win = r["win"].i64() != 0;
+        save();
+    });
+}
+
+void App::onlineFrame(float dt) {
+    net::poll();
+    syncT += dt;
+    if (syncT < 30) return;
+    syncT = 0;
+    if (!online.ready()) { online.ensureAccount(); return; }
+    if (!online.chatConnected()) online.chatConnect();
+    if (scene != Scene::Village || searching) return;
+    online.pushSave(lf::village::save(S), [this](bool ok, long long dOre, long long dAe, int rating) {
+        if (!ok) return;
+        if (dOre > 0 || dAe > 0) {
+            S.ore = std::max(0LL, S.ore - dOre);
+            S.aether = std::max(0LL, S.aether - dAe);
+            toast("Налётчики унесли " + fmtNum(dOre) + " руды и " + fmtNum(dAe) + " Эфира", rgba(255, 140, 130));
+            online.defenses([this](const json::Value& v) { defenseLog = v; });
+        }
+        S.rating = rating;
+    });
 }
 
 void App::startNight() {
@@ -379,7 +487,9 @@ void App::finishBattle() {
     } else {
         int beacons = 0;
         for (const auto& b : bt.b->buildings) beacons += b.dead && b.type == lf::BType::Beacon;
-        if (bt.kind == BattleKind::Raid) {
+        if (bt.kind == BattleKind::Raid && bt.onlineMatch > 0) {
+            submitOnlineRaid();
+        } else if (bt.kind == BattleKind::Raid) {
             auto o = lf::village::applyRaid(S, r, beacons);
             bt.gotOre = o.ore;
             bt.gotAether = o.aether;

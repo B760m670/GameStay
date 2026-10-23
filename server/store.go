@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS players (
   clan_id INTEGER,
   clan_role TEXT NOT NULL DEFAULT '',
   shield_until INTEGER NOT NULL DEFAULT 0,
+  debt_ore INTEGER NOT NULL DEFAULT 0,
+  debt_aether INTEGER NOT NULL DEFAULT 0,
   muted_until INTEGER NOT NULL DEFAULT 0,
   created INTEGER NOT NULL,
   seen INTEGER NOT NULL

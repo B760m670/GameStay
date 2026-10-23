@@ -157,6 +157,14 @@ func (s *Server) putSave(w http.ResponseWriter, r *http.Request, p *Player) {
 		fail(w, 400, "bad save")
 		return
 	}
+	// пока игрок был в игре, на него могли напасть: списываем потери из присланного сохранения
+	var debtOre, debtAether int64
+	_ = s.store.db.QueryRow(`SELECT debt_ore, debt_aether FROM players WHERE id = ?`, p.ID).Scan(&debtOre, &debtAether)
+	if debtOre > 0 || debtAether > 0 {
+		if adj, _, err := ApplyDefense(save, debtOre, debtAether, 0, false); err == nil {
+			save = adj
+		}
+	}
 	sum, _ := Summary(save)
 	if sum["rating"] != p.Rating {
 		save = strings.Replace(save, "\nrating "+itoa(sum["rating"])+"\n", "\nrating "+itoa(p.Rating)+"\n", 1)
@@ -165,12 +173,10 @@ func (s *Server) putSave(w http.ResponseWriter, r *http.Request, p *Player) {
 		fail(w, 500, "db")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "save": save})
+	_, _ = s.store.db.Exec(`UPDATE players SET debt_ore = 0, debt_aether = 0 WHERE id = ?`, p.ID)
+	writeJSON(w, 200, map[string]any{"ok": true, "save": save, "rating": p.Rating, "debt_ore": debtOre, "debt_aether": debtAether})
 }
 
-// ---------- PvP ----------
-
-// match подбирает соперника близкого рейтинга без щита и выдаёт снимок его базы.
 func (s *Server) match(w http.ResponseWriter, r *http.Request, p *Player) {
 	now := s.nowMs()
 	var def *Player
@@ -269,7 +275,8 @@ func (s *Server) attack(w http.ResponseWriter, r *http.Request, p *Player) {
 		fail(w, 500, "db")
 		return
 	}
-	if _, err := tx.Exec(`UPDATE players SET shield_until = ? WHERE id = ?`, now+shieldAfterDefense.Milliseconds(), defID); err != nil {
+	if _, err := tx.Exec(`UPDATE players SET shield_until = ?, debt_ore = debt_ore + ?, debt_aether = debt_aether + ? WHERE id = ?`,
+		now+shieldAfterDefense.Milliseconds(), result["ore"], result["aether"], defID); err != nil {
 		fail(w, 500, "db")
 		return
 	}

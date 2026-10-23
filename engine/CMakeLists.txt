@@ -9,7 +9,7 @@ endif()
 
 file(GLOB GAME_SOURCES src/game/*.cc)
 file(GLOB ENGINE_SOURCES src/engine/*.cc src/client/*.cc)
-set(PLATFORM_SOURCES src/platform/sokol_impl.cc src/platform/platform_common.cc src/platform/platform_linux.cc)
+set(PLATFORM_SOURCES src/platform/sokol_impl.cc src/platform/platform_common.cc src/platform/platform_linux.cc src/platform/net_posix.cc)
 
 option(LF_CLIENT "Собирать клиент (нужны X11/GL/ALSA)" ON)
 

@@ -154,6 +154,16 @@ func TestVerifiedAttack(t *testing.T) {
 	if c := e.do("POST", "/v1/match", a.Token, nil, nil); c != 404 {
 		t.Fatalf("defender under shield must not be matched, got %d", c)
 	}
+	// защитник присылает своё старое сохранение — потери от набега всё равно списываются
+	if res.Result["ore"] > 0 {
+		var put struct {
+			DebtOre int64 `json:"debt_ore"`
+		}
+		e.do("PUT", "/v1/save", b.Token, map[string]string{"save": b.Save}, &put)
+		if put.DebtOre != res.Result["ore"] {
+			t.Fatalf("debt must be applied: %d vs %d", put.DebtOre, res.Result["ore"])
+		}
+	}
 	var lb []map[string]any
 	e.do("GET", "/v1/leaderboard", "", nil, &lb)
 	if len(lb) != 2 {

@@ -345,6 +345,8 @@ void App::villageFrame(float dt, const std::vector<input::Event>& worldEvents) {
         case Modal::Menu: drawMenu(); break;
         case Modal::Tasks: drawTasks(); break;
         case Modal::Workshop: drawWorkshop(); break;
+        case Modal::Chat: drawChat(); break;
+        case Modal::Clan: drawClan(); break;
         default: break;
     }
     if (modal != Modal::None) gfx::popScale();
@@ -515,6 +517,15 @@ void App::drawVillageHud() {
         selectedOb = -1;
         resetArmed = false;
     };
+    {   // чат: круглая кнопка слева, со счётчиком непрочитанного
+        float cx = safeX + 30, cy = cam.h * 0.42f;
+        if (ui::roundButton(cx, cy, 24, "icon/chat", "Чат", ui::Style::Normal, true)) open(Modal::Chat);
+        if (online.unread > 0) {
+            atlas::drawRect(atlas::get("fx/dot"), cx + 10, cy - 30, 24, 24, rgba(30, 14, 20));
+            atlas::drawRect(atlas::get("fx/dot"), cx + 12, cy - 28, 20, 20, rgba(230, 60, 50));
+            font::draw(online.unread > 9 ? "9+" : std::to_string(online.unread), cx + 22, cy - 26, 12, 0xffffffffu, font::Center, false);
+        }
+    }
     const float R = 38, cyB = cam.h - safeB - R - 14;
     float pulse = 1 + 0.03f * std::sin(t * 3);
     gfx::pushScale(safeX + R + 6, cyB, pulse);

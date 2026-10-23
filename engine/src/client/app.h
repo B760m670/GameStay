@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "camera.h"
+#include "online.h"
 #include "world.h"
 #include "engine/gfx.h"
 #include "engine/input.h"
@@ -15,7 +16,7 @@
 namespace client {
 
 enum class Scene { Village, Battle };
-enum class Modal { None, Shop, Army, Map, Night, Codex, Menu, Result, Info, Tasks, Workshop };
+enum class Modal { None, Shop, Army, Map, Night, Codex, Menu, Result, Info, Tasks, Workshop, Chat, Clan };
 enum class BattleKind { Raid, Mission, Night };
 
 struct Toast { std::string text; float t; uint32_t color; };
@@ -57,6 +58,8 @@ struct BattleState {
     bool firstWin = false;
     int ratingDelta = 0;
     lf::replay::Record rec;  // запись для продолжения после закрытия приложения
+    long long onlineMatch = 0;  // > 0 — набег на реального игрока, итог считает сервер
+    bool awaitingServer = false;
 };
 
 class App {
@@ -69,6 +72,7 @@ public:
     // для автотестов
     void startMission(int idx);
     void startRaid();
+    void startAiRaid();
     void startNight();
     void skipDialogue() { dlg.clear(); }
     void viewRadius(float r) { requestFocus(22, 22, r, 2.f); }
@@ -114,6 +118,24 @@ private:
     float emitT = 0;
     void updateLife(float dt);
     void drawWorkshop();
+
+    // онлайн
+    Online online;
+    float syncT = 0;
+    bool searching = false;
+    int chatTab = 0;
+    std::string chatInput, clanName, clanQuery;
+    json::Value clanList, clanView, defenseLog;
+    long long myClan = 0;
+    bool clanLoaded = false;
+    void onlineFrame(float dt);
+    void startOnlineRaid();
+    void submitOnlineRaid();
+    void drawChat();
+    void drawClan();
+    void refreshClan();
+    bool onlineOffline(const ui::Rect& body);  // true — онлайн недоступен (нарисована заглушка)
+    static int utf8Len(const std::string& s);
 
     // титульный экран
     const gfx::Texture* splash = nullptr;

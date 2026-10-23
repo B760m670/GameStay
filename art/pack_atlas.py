@@ -446,7 +446,16 @@ def flash(d, s, im):
     outlined_poly(d, pts, (255, 252, 225), s)
 
 
-for n, f in [("flash", flash), ("heal", heal), ("rage", rage), ("ore", ore), ("aether", aether), ("shard", shard), ("star", star), ("builder", hammer), ("army", sword),
+def chat(d, s, im):
+    S = 128 * s
+    outlined_poly(d, [(S * .14, S * .2), (S * .86, S * .2), (S * .86, S * .66), (S * .46, S * .66), (S * .26, S * .86), (S * .3, S * .66),
+                      (S * .14, S * .66)], (245, 240, 225), s)
+    for k in range(3):
+        x = S * (.34 + k * .16)
+        d.ellipse((x - S * .045, S * .4, x + S * .045, S * .49), fill=(70, 60, 110, 255))
+
+
+for n, f in [("flash", flash), ("chat", chat), ("heal", heal), ("rage", rage), ("ore", ore), ("aether", aether), ("shard", shard), ("star", star), ("builder", hammer), ("army", sword),
              ("build", house), ("codex", scroll), ("night", moon), ("map", mapi), ("menu", gear), ("upgrade", up),
              ("clock", clock), ("close", close), ("eclipse", eclipse), ("flag", flag), ("lantern", lantern)]:
     icon(n, f)

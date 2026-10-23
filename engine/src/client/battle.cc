@@ -384,6 +384,15 @@ void App::drawBattleHud() {
 void App::drawResult() {
     bool night = bt.kind == BattleKind::Night;
     const char* title = night ? (bt.res.win ? "Рассвет" : "Фонарь пал") : (bt.res.win ? "Победа!" : "Поражение");
+    if (bt.awaitingServer) {  // онлайн-набег: итог считает сервер
+        ui::block({0, 0, cam.w, cam.h});
+        gfx::fillRect(0, 0, cam.w, cam.h, rgba(5, 3, 14, 160));
+        float w = 420, h = 140, x = cam.w / 2 - w / 2, y = cam.h / 2 - h / 2;
+        ui::panel({x, y, w, h});
+        font::draw("Сверяем бой с сервером…", x + w / 2, y + 50, 20, kGold, font::Center);
+        bt.resultT = 0;
+        return;
+    }
     const float rt = bt.resultT;
     auto count = [&](long long v) { return (long long)(v * std::clamp((rt - 0.4f) / 1.3f, 0.f, 1.f)); };
     ui::block({0, 0, cam.w, cam.h});

@@ -55,6 +55,8 @@ void init() {
     else if (opt.modal == "info") app.modal = M::Info;
     else if (opt.modal == "tasks") app.modal = M::Tasks;
     else if (opt.modal == "workshop") app.modal = M::Workshop;
+    else if (opt.modal == "chat") app.modal = M::Chat;
+    else if (opt.modal == "clan") app.modal = M::Clan;
 }
 
 void frame() {
@@ -62,7 +64,8 @@ void frame() {
     if (!lastTick) stm_laptime(&lastTick);
     if (opt.shot) dt = 1.0 / 30;  // детерминированное время в тестах
     if (dt > 0.1) dt = 0.1;
-    if (opt.deploy && frameNo == 2 && app.scene == client::Scene::Battle) app.autoDeploy();
+    static bool deployed = false;
+    if (opt.deploy && !deployed && frameNo >= 2 && app.scene == client::Scene::Battle) { app.autoDeploy(); deployed = true; }
     app.frame((float)dt, sapp_widthf() / sapp_dpi_scale(), sapp_heightf() / sapp_dpi_scale());
     frameNo++;
     if (opt.shot && frameNo >= opt.frames) {
