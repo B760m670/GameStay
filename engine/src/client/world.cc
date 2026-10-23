@@ -60,6 +60,9 @@ void ellipseSprite(const char* name, float x, float y, float rx, float ry, uint3
 // Облик постройки по уровню: 3 ступени (t1..t3) на всю шкалу уровней.
 const atlas::Sprite* buildingSprite(lf::BType type, int level) {
     const auto& def = lf::B(type);
+    // свой облик на каждом уровне (_l0 — руины), если он есть
+    if (const atlas::Sprite* s = atlas::get(std::string("b/") + def.id + "_l" + std::to_string(level))) return s;
+    level = std::max(1, level);
     int tier = std::clamp((level - 1) * 3 / std::max(1, def.maxLevel) + 1, 1, 3);
     for (int t = tier; t >= 1; t--)
         if (const atlas::Sprite* s = atlas::get(std::string("b/") + def.id + "_t" + std::to_string(t))) return s;

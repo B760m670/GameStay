@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -70,6 +71,20 @@ func (e *env) register(name string) account {
 	return a
 }
 
+// restoreHQ восстанавливает главное здание из руин в сохранении игрока (новая игра начинается с руин,
+// а в соперники подбирают только восстановленных).
+func (e *env) restoreHQ(a *account) {
+	e.t.Helper()
+	re := regexp.MustCompile(`\nb (\d+) 0 (\d+) (\d+) 0 `)
+	if !re.MatchString(a.Save) {
+		e.t.Fatalf("no ruined HQ in save:\n%s", a.Save)
+	}
+	a.Save = re.ReplaceAllString(a.Save, "\nb $1 0 $2 $3 1 ")
+	if c := e.do("PUT", "/v1/save", a.Token, map[string]string{"save": a.Save}, nil); c != 200 {
+		e.t.Fatalf("restore save: %d", c)
+	}
+}
+
 type matchResp struct {
 	Match    int64  `json:"match"`
 	Seed     int    `json:"seed"`
@@ -109,6 +124,11 @@ func TestVerifiedAttack(t *testing.T) {
 	e := newEnv(t)
 	a := e.register("Атакующий")
 	b := e.register("Защитник")
+	var none matchResp
+	if c := e.do("POST", "/v1/match", a.Token, nil, &none); c != 404 {
+		t.Fatalf("players with a ruined main building must not be matched, got %d", c)
+	}
+	e.restoreHQ(&b)
 	var m matchResp
 	if c := e.do("POST", "/v1/match", a.Token, nil, &m); c != 200 || m.Defender.ID != b.ID || m.Snapshot == "" {
 		t.Fatalf("match: %d %+v", c, m)

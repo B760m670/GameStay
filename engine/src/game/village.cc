@@ -44,8 +44,8 @@ VillageState create(long long now) {
     S.shards = 15;
     S.trainTickAt = now;
     S.nightAt = now + kFirstNightMs;
-    // Новая игра — только Штаб; остальные постройки открываются его уровнем.
-    S.buildings.push_back(make(S, BType::Lantern, 20, 20, 1, now));
+    // Новая игра — руины главного здания; первое дело — восстановить, затем постройки открываются его уровнем.
+    S.buildings.push_back(make(S, BType::Lantern, 20, 20, 0, now));
     S.army[(int)TroopType::Torch] = 10;  // стартовый отряд: можно сразу сходить в первый поход
     seedObstacles(S, 1234, 18);
     S.obstacleAt = now + kObstacleEveryMs;
@@ -154,9 +154,9 @@ long long cap(const VillageState& S, Res r) {
     if (r == Res::Shards) return (1LL << 60);
     long long c = 0;
     for (const auto& b : S.buildings) {
-        if (b.level < 1) continue;
         const auto& d = b.def();
-        if (b.type == BType::Lantern || d.stores == r) c += d.lv(d.storage, b.level);
+        if (b.type == BType::Lantern) c += d.lv(d.storage, std::max(1, b.level));  // и в руинах есть где хранить запас
+        else if (b.level >= 1 && d.stores == r) c += d.lv(d.storage, b.level);
     }
     return c;
 }
@@ -189,7 +189,7 @@ int queueHousing(const VillageState& S) {
     return n;
 }
 int campCapacity(const VillageState& S) {
-    int n = 0;
+    int n = kBaseArmySlots;  // небольшой отряд есть у поселения с самого начала
     for (const auto& b : S.buildings)
         if (b.type == BType::Camp && b.level >= 1) n += b.def().lv(b.def().capacity, b.level);
     return n;
@@ -263,7 +263,13 @@ std::pair<Res, int> buildCost(const VillageState& S, BType t) {
     return {B(t).costRes, B(t).cost[0]};
 }
 
+bool hqRuined(const VillageState& S) {
+    for (const auto& b : S.buildings) if (b.type == BType::Lantern) return b.level < 1;
+    return false;
+}
+
 Result canBuild(const VillageState& S, BType t, long long now) {
+    if (hqRuined(S)) return Result::no(std::string("Сначала восстанови: ") + B(BType::Lantern).name);
     int LL = lanternLevel(S);
     int lim = limit(t, LL);
     if (lim == 0) return Result::no("Нужен Штаб ур. " + std::to_string(unlockLantern(t)));

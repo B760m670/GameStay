@@ -440,15 +440,25 @@ void App::drawVillageWorld() {
         const auto& b = *it.b;
         world::BuildingLook look;
         look.selected = b.id == selected && !placing.active;
-        look.constructing = b.level == 0;
+        bool ruins = b.type == lf::BType::Lantern && b.level == 0;
+        look.constructing = b.level == 0 && !ruins;
         if (it.ghost || (placing.active && b.id == placing.moveId)) { look.ghost = placing.valid ? 1 : -1; look.alpha = 0.85f; }
         if (auto it = popAt.find(b.id); it != popAt.end()) look.pop = (t - it->second) / 0.55f;
-        world::drawBuilding(cam, b.type, (float)b.x, (float)b.y, std::max(1, b.level), look, t);
+        world::drawBuilding(cam, b.type, (float)b.x, (float)b.y, ruins ? 0 : std::max(1, b.level), look, t);
     }
     for (const auto& p : particles) if (!p.additive) world::drawParticle(cam, p);
     gfx::setBlend(gfx::Blend::Add);
     for (const auto& p : particles) if (p.additive) world::drawParticle(cam, p);
     gfx::setBlend(gfx::Blend::Alpha);
+    // руины главного здания: подпрыгивающая подсказка «начни отсюда»
+    for (const auto& b : S.buildings)
+        if (b.type == lf::BType::Lantern && b.level == 0 && b.busyUntil <= tnow && selected != b.id) {
+            float sz = (float)b.def().size;
+            Vec2 p = cam.toScreen(b.x + sz / 2, b.y + sz / 2, 120 + std::fabs(std::sin(t * 3)) * 18);
+            atlas::drawRect(atlas::get("fx/dot"), p.x - 24, p.y - 24, 48, 48, rgba(20, 12, 30, 230));
+            atlas::drawRect(atlas::get("fx/dot"), p.x - 21, p.y - 21, 42, 42, rgba(255, 214, 110));
+            ui::icon("icon/builder", p.x, p.y, 34);
+        }
     // индикаторы стройки и сбора
     for (const auto& b : S.buildings) {
         const auto& d = b.def();
@@ -757,6 +767,7 @@ void App::drawSelectedPanel() {
     const auto& d = b->def();
     auto up = V::upgradeInfo(S, b->id, tnow);
     bool busy = b->busyUntil > tnow;
+    bool ruins = b->type == lf::BType::Lantern && b->level == 0;  // руины главного здания в начале игры
     int lv = std::max(1, b->level);
     std::vector<Action> acts;
     acts.push_back({"icon/info", "Сведения", ui::Style::Normal, false, "", "", 0, 0});
@@ -772,19 +783,22 @@ void App::drawSelectedPanel() {
         acts.push_back({"icon/star", "Максимум", ui::Style::Dark, true, "", "", 0, -1});
     } else {
         bool afford = S.res(up.res) >= up.cost;
-        acts.push_back({"icon/upgrade", "Улучшить", ui::Style::Gold, !up.ok, up.cost > 0 ? fmtNum(up.cost) : "", up.cost > 0 ? resIcon(up.res) : "",
+        acts.push_back({"icon/upgrade", ruins ? "Восстановить" : "Улучшить", ui::Style::Gold, !up.ok, up.cost > 0 ? fmtNum(up.cost) : "", up.cost > 0 ? resIcon(up.res) : "",
                         afford ? 0xffffffffu : kBad, 1});
     }
     float tx, ty;
     ui::Rect c = selectionCard(cam.w, cam.h, safeB, acts.size(), &tx, &ty);
-    world::drawBuildingThumb(b->type, c.x + 66, c.y + c.h / 2, 108, 108, lv);
+    world::drawBuildingThumb(b->type, c.x + 66, c.y + c.h / 2, 108, 108, ruins ? 0 : lv);
     float ix = c.x + 130, iw = c.w - 140;
     font::draw(d.name, ix, c.y + 14, 22, kGold);
-    font::draw(b->level ? "Уровень " + std::to_string(b->level) + " из " + std::to_string(d.maxLevel) : "Строится", ix, c.y + 44, 16, kMuted);
+    font::draw(ruins ? "Разрушен" : b->level ? "Уровень " + std::to_string(b->level) + " из " + std::to_string(d.maxLevel) : "Строится", ix, c.y + 44, 16,
+               ruins ? kBad : kMuted);
     // строка состояния: что происходит сейчас, либо почему нельзя улучшить
     std::string status;
     uint32_t sc = 0xffffffffu;
-    if (busy) status = (b->level ? "Улучшение · осталось " : "Стройка · осталось ") + fmtTime((b->busyUntil - tnow) / 1000.0);
+    if (busy) status = (ruins ? "Восстановление · осталось " : b->level ? "Улучшение · осталось " : "Стройка · осталось ") +
+                       fmtTime((b->busyUntil - tnow) / 1000.0);
+    else if (ruins) status = "Восстанови — откроются первые постройки";
     else if (!up.ok && !up.max) { status = up.reason; sc = kBad; }
     else if (d.produces != lf::Res::None) status = "Добыча " + std::to_string(d.lv(d.rate, lv)) + " в минуту · запас " + fmtNum(d.lv(d.cap, lv));
     else if (!d.storage.empty()) status = "Хранит до " + fmtNum(d.lv(d.storage, lv));

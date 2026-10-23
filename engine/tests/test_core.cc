@@ -22,6 +22,7 @@ struct Reg { Reg(const char* n, std::function<void()> f) { registry().push_back(
 // Деревня с набором построек (как была старая стартовая): для проверок стройки, армии, обороны.
 static VillageState testVillage(long long now) {
     auto S = village::create(now);
+    S.buildings[0].level = 1;  // главное здание восстановлено
     auto add = [&](BType t, int x, int y) {
         BuildingRec b;
         b.id = S.nextId++;
@@ -393,13 +394,20 @@ int main() {
     return failures ? 1 : 0;
 }
 
-TEST(new_game_starts_with_hq_only) {
+TEST(new_game_starts_with_hq_ruins) {
     auto S = village::create(0);
-    CHECK(S.buildings.size() == 1 && S.buildings[0].type == BType::Lantern, "buildings=%d", (int)S.buildings.size());
-    CHECK(village::builders(S, 0).total == 1, "the HQ provides one builder");
-    CHECK(village::lanternLevel(S) == 1 && B(BType::Lantern).maxLevel == kMaxLantern && kMaxLantern == 5, "");
+    CHECK(S.buildings.size() == 1 && S.buildings[0].type == BType::Lantern && S.buildings[0].level == 0, "");
+    CHECK(village::hqRuined(S) && village::builders(S, 0).total == 1, "ruins and one builder");
+    CHECK(B(BType::Lantern).maxLevel == kMaxLantern && kMaxLantern == 5, "");
+    CHECK(!village::canBuild(S, BType::Ballista, 0).ok, "nothing can be built before the restoration");
     // ночи ждут первой обороны
     village::tick(S, 10LL * 3600 * 1000);
     CHECK(!village::nightsActive(S) && !village::nightDue(S, 10LL * 3600 * 1000), "");
-    CHECK(village::canBuild(S, BType::Ballista, 0).ok, "first defence is available at HQ level 1");
+    // восстановление: стоит руду и время, после — уровень 1 и первые постройки
+    long long ore = S.ore;
+    CHECK(village::startUpgrade(S, S.buildings[0].id, 0).ok, "");
+    CHECK(S.ore == ore - B(BType::Lantern).cost[0], "");
+    village::tick(S, 60 * 1000);
+    CHECK(!village::hqRuined(S) && village::lanternLevel(S) == 1, "level=%d", S.buildings[0].level);
+    CHECK(village::canBuild(S, BType::Ballista, 60 * 1000).ok, "first defence is available after restoration");
 }

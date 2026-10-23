@@ -37,7 +37,9 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func fail(w http.ResponseWriter, code int, msg string) { writeJSON(w, code, map[string]string{"error": msg}) }
+func fail(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]string{"error": msg})
+}
 
 func readJSON(r *http.Request, v any) error {
 	r.Body = http.MaxBytesReader(nil, r.Body, 2<<20)
@@ -120,7 +122,8 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	tok := newToken()
 	now := s.nowMs()
 	save := NewVillage(now)
-	res, err := s.store.db.Exec(`INSERT INTO players(name, token_hash, save, created, seen) VALUES(?, ?, ?, ?, ?)`,
+	// lantern 0: главное здание ещё в руинах — пока его не восстановят, игрока не подбирают в соперники
+	res, err := s.store.db.Exec(`INSERT INTO players(name, token_hash, save, lantern, created, seen) VALUES(?, ?, ?, 0, ?, ?)`,
 		cleanName(req.Name), hashToken(tok), save, now, now)
 	if err != nil {
 		fail(w, 500, "db")
@@ -182,7 +185,7 @@ func (s *Server) match(w http.ResponseWriter, r *http.Request, p *Player) {
 	var def *Player
 	for _, spread := range []int64{150, 400, 1000, 1 << 30} {
 		row := s.store.db.QueryRow(`SELECT `+playerCols+` FROM players
-			WHERE id != ? AND shield_until < ? AND rating BETWEEN ? AND ?
+			WHERE id != ? AND shield_until < ? AND lantern >= 1 AND rating BETWEEN ? AND ?
 			ORDER BY abs(rating - ?) + abs(random() % 60) LIMIT 1`, p.ID, now, p.Rating-spread, p.Rating+spread, p.Rating)
 		if d, err := scanPlayer(row); err == nil {
 			def = d

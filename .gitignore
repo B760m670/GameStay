@@ -15,3 +15,4 @@ server/lanternfall-server
 *.db-wal
 *.db-shm
 engine/build-web/
+art/source/polyhaven/

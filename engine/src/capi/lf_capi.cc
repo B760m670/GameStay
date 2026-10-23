@@ -47,7 +47,7 @@ char* lf_summary(const char* save) {
     VillageState S;
     if (!loadSave(save, S)) return nullptr;
     std::ostringstream o;
-    o << "level " << S.level << "\nrating " << S.rating << "\nlantern " << village::lanternLevel(S) << "\nore " << S.ore << "\naether " << S.aether
+    o << "level " << S.level << "\nrating " << S.rating << "\nlantern " << (village::hqRuined(S) ? 0 : village::lanternLevel(S)) << "\nore " << S.ore << "\naether " << S.aether
       << "\nshards " << S.shards << "\n";
     return dup(o.str());
 }

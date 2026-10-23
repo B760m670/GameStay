@@ -38,7 +38,7 @@ std::vector<BuildingDef> makeBuildings() {
     auto& L = v[(int)BType::Lantern];
     L.type = BType::Lantern; L.id = "lantern"; L.name = "Штаб"; L.size = 4; L.maxLevel = 5; L.category = Category::Core; L.costRes = Res::Ore;
     L.desc = "Центр поселения: отсюда управляют стройкой и обороной. Уровень штаба открывает новые постройки и поднимает их предел.";
-    L.cost = {0, 1200, 4000, 12000, 30000, 70000}; L.time = {0, 60, 240, 600, 1200, 2400};
+    L.cost = {300, 1200, 4000, 12000, 30000, 70000}; L.time = {30, 60, 240, 600, 1200, 2400};  // [0] — восстановление из руин
     L.hp = {1500, 2100, 2800, 3600, 4500, 5500}; L.light = {7, 8, 9, 10, 11, 12}; L.storage = {1000, 1500, 2000, 2500, 3000, 4000};
 
     auto& Bc = v[(int)BType::Beacon];

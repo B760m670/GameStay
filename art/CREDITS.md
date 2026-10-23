@@ -7,3 +7,9 @@ Castle Kit, Fantasy Town Kit 2.0, Tower Defense Kit, Survival Kit, Graveyard Kit
 
 Портреты персонажей (`art/source/portraits`) и заставка (`engine/assets/art/splash.jpg`) сгенерированы
 в Higgsfield (модель Z Image) по описаниям персонажей игры.
+
+## Poly Haven (CC0)
+
+Фотосканы моделей и фототекстуры для руин главного здания: mossy_stone_wall, forest_ground_04, rock_moss_set_01/02,
+dead_tree_trunk, tree_stump_01, bark_debris_01, fir_sapling, fern_02, grass_medium_01 — https://polyhaven.com, лицензия CC0.
+Загружаются скриптом art/fetch_polyhaven.py.

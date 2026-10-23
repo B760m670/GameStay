@@ -21,9 +21,10 @@ def lin(c):
 _MATS = {}
 
 
-def material(name, colors, rough=0.65, metal=0.0, kind="noise", scale=6.0, bump=0.25, emit=0.0, per_part=True):
+def material(name, colors, rough=0.65, metal=0.0, kind="noise", scale=6.0, bump=0.25, emit=0.0, per_part=True, moss=0.0):
     """colors — палитра sRGB. При per_part цвет каждой части берётся из палитры по Object Info.Random (камни,
-    черепица, доски — разные). Поверх — процедурная фактура: noise (штукатурка, камень), wave (дерево) или none."""
+    черепица, доски — разные). Поверх — процедурная фактура: noise (штукатурка, камень), wave (дерево) или none.
+    moss > 0 — мох пятнами на обращённых вверх гранях (руины, старые брёвна)."""
     if name in _MATS:
         return _MATS[name]
     m = bpy.data.materials.new(name)
@@ -90,6 +91,38 @@ def material(name, colors, rough=0.65, metal=0.0, kind="noise", scale=6.0, bump=
             b.inputs["Distance"].default_value = 0.02
             L.new(tex.outputs["Fac"], b.inputs["Height"])
             L.new(b.outputs["Normal"], bsdf.inputs["Normal"])
+    if moss > 0:
+        geo = N.new("ShaderNodeNewGeometry")
+        sep = N.new("ShaderNodeSeparateXYZ")
+        L.new(geo.outputs["Normal"], sep.inputs[0])
+        up = N.new("ShaderNodeMapRange")  # насколько грань смотрит вверх
+        up.inputs["From Min"].default_value = 0.45
+        up.inputs["From Max"].default_value = 0.9
+        L.new(sep.outputs["Z"], up.inputs["Value"])
+        spots = N.new("ShaderNodeTexNoise")  # пятна мха
+        spots.inputs["Scale"].default_value = 5.0
+        spots.inputs["Detail"].default_value = 8.0
+        L.new(N.new("ShaderNodeTexCoord").outputs["Object"], spots.inputs["Vector"])
+        sm = N.new("ShaderNodeMapRange")
+        sm.inputs["From Min"].default_value = 0.6 - moss * 0.1   # больше moss — шире пятна
+        sm.inputs["From Max"].default_value = 0.68 - moss * 0.1
+        L.new(spots.outputs["Fac"], sm.inputs["Value"])
+        mul = N.new("ShaderNodeMath")
+        mul.operation = "MULTIPLY"
+        mul.use_clamp = True
+        mul2 = N.new("ShaderNodeMath")
+        mul2.operation = "MULTIPLY"
+        mul2.inputs[1].default_value = 0.85  # сквозь мох проступает камень
+        L.new(mul.outputs[0], mul2.inputs[0])
+        L.new(up.outputs["Result"], mul.inputs[0])
+        L.new(sm.outputs["Result"], mul.inputs[1])
+        mossc = N.new("ShaderNodeMix")
+        mossc.data_type = "RGBA"
+        mossc.blend_type = "MIX"
+        mossc.inputs["B"].default_value = lin((96, 138, 52))
+        L.new(mul2.outputs[0], mossc.inputs["Factor"])
+        L.new(color, mossc.inputs["A"])
+        color = mossc.outputs["Result"]
     L.new(color, bsdf.inputs["Base Color"])
     if emit > 0:
         L.new(color, bsdf.inputs["Emission Color"])
@@ -417,6 +450,8 @@ def grade(path, saturation=1.14, contrast=1.06):
     p = px.reshape(-1, 4)
     rgb = p[:, :3]
     lum = (rgb * np.array([0.299, 0.587, 0.114], np.float32)).sum(1, keepdims=True)
+    shadow = (lum[:, 0] < 0.035) & (p[:, 3] > 0)  # тень ловца на земле (сама постройка не бывает почти чёрной)
+    p[shadow, 3] = np.minimum(p[shadow, 3], 0.55)
     rgb = lum + (rgb - lum) * saturation
     p[:, :3] = np.clip((rgb - 0.5) * contrast + 0.5, 0, 1)
     img.pixels.foreach_set(p.ravel())
