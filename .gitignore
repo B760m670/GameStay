@@ -14,3 +14,4 @@ server/lanternfall-server
 *.db
 *.db-wal
 *.db-shm
+engine/build-web/

@@ -1,6 +1,9 @@
 #include "platform.h"
 #include <chrono>
 #include <cstdio>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 namespace platform {
 bool readFile(const std::string& path, std::vector<unsigned char>& out) {
@@ -21,7 +24,22 @@ bool writeFile(const std::string& path, const std::string& data) {
     if (!f) return false;
     bool ok = std::fwrite(data.data(), 1, data.size(), f) == data.size();
     ok = (std::fclose(f) == 0) && ok;
-    return ok && std::rename(tmp.c_str(), path.c_str()) == 0;
+    ok = ok && std::rename(tmp.c_str(), path.c_str()) == 0;
+#ifdef __EMSCRIPTEN__
+    // браузер: папка сохранений смонтирована в IndexedDB — сбрасываем изменения туда
+    // одна синхронизация за раз; запись во время неё — ещё один проход после
+    if (ok) EM_ASM({
+        if (Module.lfSync) { Module.lfSyncAgain = true; return; }
+        Module.lfSync = true;
+        (function go() {
+            FS.syncfs(false, function(err) {
+                if (err) console.warn('save sync', err);
+                if (Module.lfSyncAgain) { Module.lfSyncAgain = false; go(); } else Module.lfSync = false;
+            });
+        })();
+    });
+#endif
+    return ok;
 }
 
 long long nowMs() {

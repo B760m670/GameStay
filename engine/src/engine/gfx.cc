@@ -46,7 +46,13 @@ fragment float4 _main(vs_out in [[stage_in]], texture2d<float> tex [[texture(0)]
 }
 )";
 #else
-const char* kVS = R"(#version 410
+// GLSL: на ПК — 4.1 core, в браузере (WebGL2) — ES 3.0 с явной точностью.
+#if defined(SOKOL_GLES3)
+#define LF_GLSL_HEAD "#version 300 es\nprecision mediump float;\n"
+#else
+#define LF_GLSL_HEAD "#version 410\n"
+#endif
+const char* kVS = LF_GLSL_HEAD R"(
 uniform vec4 u_screen;
 layout(location=0) in vec2 a_pos;
 layout(location=1) in vec2 a_uv;
@@ -59,7 +65,7 @@ void main() {
     v_color = a_color;
 }
 )";
-const char* kFS = R"(#version 410
+const char* kFS = LF_GLSL_HEAD R"(
 uniform sampler2D tex;
 in vec2 v_uv;
 in vec4 v_color;
