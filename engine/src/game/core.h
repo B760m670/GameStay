@@ -143,6 +143,8 @@ struct TaskDef {
     int shards[3], xp[3];
 };
 
+struct BattleResult;
+
 // Препятствия на поляне: кусты, валуны, деревья. Расчищаются за руду, дают осколки и опыт; со временем вырастают новые.
 enum class ObKind { Bush, Rock, Tree, Stump, Flowers, Count };
 struct Obstacle { int id = 0; ObKind kind = ObKind::Bush; int x = 0, y = 0; };
@@ -263,6 +265,11 @@ int heroMaxLevel(const VillageState& S);  // ограничен уровнем �
 int heroUpgradeCost(int toLevel);         // Эфир
 float heroMult(int level);
 Result upgradeHero(VillageState& S);
+// Итог набега на другого игрока (общая функция для клиента и сервера).
+struct RaidOutcome { long long ore = 0, aether = 0, shards = 0; int ratingDelta = 0; bool newLeague = false; };
+RaidOutcome applyRaid(VillageState& S, const BattleResult& r, int beaconsDestroyed);
+// Защитник теряет добычу из хранилищ и рейтинг (или получает, если атака отбита).
+int applyDefense(VillageState& D, const BattleResult& r);
 // Рейтинг и лиги.
 struct League { const char* name; int minRating; float lootBonus; uint32_t color; };
 const League& league(int rating);

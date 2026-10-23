@@ -453,6 +453,37 @@ Result upgradeHero(VillageState& S) {
     return Result::yes();
 }
 
+RaidOutcome applyRaid(VillageState& S, const BattleResult& r, int beaconsDestroyed) {
+    RaidOutcome o;
+    for (auto& [type, n] : r.used)
+        if ((int)type < kPlayerTroops) S.army[(int)type] = std::max(0, S.army[(int)type] - n);
+    float bonus = 1.f + league(S.rating).lootBonus;
+    o.ore = addRes(S, Res::Ore, (long long)(r.lootOre * bonus));
+    o.aether = addRes(S, Res::Aether, (long long)(r.lootAether * bonus));
+    S.stats.attacks++;
+    if (r.win) S.stats.wins++;
+    S.stats.stars += r.stars;
+    S.stats.beaconsDestroyed += beaconsDestroyed;
+    addXp(S, 2 + 6LL * r.stars);
+    int old = S.rating, before = leagueIndex(old);
+    S.rating = std::max(0, old + ratingDelta(r.win, r.stars));
+    o.ratingDelta = S.rating - old;
+    o.newLeague = leagueIndex(S.rating) > before;
+    if (r.stars > 0) {
+        o.shards = r.stars;
+        S.shards += r.stars;
+    }
+    return o;
+}
+
+int applyDefense(VillageState& D, const BattleResult& r) {
+    D.ore = std::max(0LL, D.ore - r.lootOre);
+    D.aether = std::max(0LL, D.aether - r.lootAether);
+    int old = D.rating;
+    D.rating = std::max(0, old + (r.win ? -(6 + 4 * r.stars) : 5));
+    return D.rating - old;
+}
+
 namespace {
 const League kLeagues[] = {
     {"Медь", 0, 0.00f, 0xff5a8ad0u}, {"Бронза", 100, 0.05f, 0xff3a7ac8u}, {"Серебро", 300, 0.10f, 0xffd8d0c8u},

@@ -41,6 +41,23 @@ jobs:
           name: screenshots
           path: engine/shots
 
+  server:
+    name: Сервер — сборка и тесты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Game core for the server
+        run: server/build_core.sh
+      - name: Vet and test
+        working-directory: server
+        run: |
+          go vet ./...
+          go test -race -count=1 ./...
+
   ios:
     name: iOS — неподписанный IPA для LiveContainer
     runs-on: macos-15

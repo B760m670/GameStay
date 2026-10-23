@@ -9,3 +9,8 @@ engine/shots/
 engine/save/
 *.sav
 settings.txt
+engine/build-server/
+server/lanternfall-server
+*.db
+*.db-wal
+*.db-shm
