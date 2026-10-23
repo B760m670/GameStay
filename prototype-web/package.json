@@ -1,0 +1,11 @@
+{
+  "name": "lanternfall",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Lanternfall: Хранители Мглы — стратегия о свете и тьме",
+  "scripts": {
+    "start": "npx http-server . -p 8080 -c-1",
+    "test": "node --test tests/*.test.mjs"
+  }
+}

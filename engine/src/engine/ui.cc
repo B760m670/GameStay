@@ -1,0 +1,266 @@
+#include "ui.h"
+
+#include <algorithm>
+#include <cmath>
+
+#include "atlas.h"
+#include "audio.h"
+#include "font.h"
+#include "gfx.h"
+#include "../platform/platform.h"
+
+namespace ui {
+namespace {
+std::vector<Rect> prevBlocks, curBlocks;
+int activeId = -1;              // палец, захваченный UI
+float pressX = 0, pressY = 0, curX = 0, curY = 0;
+bool released = false;          // палец отпущен в этом кадре
+float relX = 0, relY = 0;
+float uiTime = 0;
+std::vector<std::pair<Rect, float>> bounces;  // недавно нажатые кнопки: время нажатия
+
+float bounceScale(const Rect& r, bool pressed) {
+    if (pressed) return 0.92f;
+    for (const auto& [br, t0] : bounces) {
+        if (std::fabs(br.x - r.x) < 1 && std::fabs(br.y - r.y) < 1) {
+            float k = uiTime - t0;
+            if (k < 0.35f) return 1.f + std::sin(k * 18.f) * 0.08f * (1 - k / 0.35f);
+        }
+    }
+    return 1.f;
+}
+void addBounce(const Rect& r) {
+    bounces.push_back({r, uiTime});
+    if (bounces.size() > 8) bounces.erase(bounces.begin());
+}
+
+bool hitPrev(float x, float y) {
+    for (const auto& r : prevBlocks) if (r.contains(x, y)) return true;
+    return false;
+}
+
+const char* styleSprite(Style s) {
+    switch (s) {
+        case Style::Gold: return "ui/btn_gold";
+        case Style::Green: return "ui/btn_green";
+        case Style::Red: return "ui/btn_red";
+        case Style::Dark: return "ui/btn_dark";
+        case Style::Paper: return "ui/paper";
+        case Style::Card: return "ui/card";
+        default: return "ui/btn";
+    }
+}
+}  // namespace
+
+std::vector<input::Event> beginFrame(const std::vector<input::Event>& events) {
+    released = false;
+    std::vector<input::Event> world;
+    for (const auto& e : events) {
+        if (e.type == input::Type::Down && activeId < 0 && hitPrev(e.x, e.y)) {
+            activeId = e.id;
+            pressX = curX = e.x;
+            pressY = curY = e.y;
+            continue;
+        }
+        if (e.id == activeId) {
+            if (e.type == input::Type::Move) { curX = e.x; curY = e.y; }
+            if (e.type == input::Type::Up) { released = true; relX = e.x; relY = e.y; activeId = -1; }
+            if (e.type == input::Type::Cancel) activeId = -1;
+            continue;
+        }
+        if (e.type == input::Type::Scroll && hitPrev(e.x, e.y)) continue;
+        world.push_back(e);
+    }
+    curBlocks.clear();
+    return world;
+}
+
+void endFrame() { prevBlocks.swap(curBlocks); }
+
+void block(const Rect& r) { curBlocks.push_back(r); }
+
+bool tapped(const Rect& r) {
+    block(r);
+    return released && r.contains(relX, relY) && r.contains(pressX, pressY);
+}
+
+void setTime(float t) { uiTime = t; }
+
+void panel(const Rect& r, Style s) {
+    block(r);
+    if (s == Style::Paper) atlas::draw9(atlas::get("ui/paper"), r.x, r.y, r.w, r.h, 66, 30);
+    else if (s == Style::Card) atlas::draw9(atlas::get("ui/card"), r.x, r.y, r.w, r.h, 40, 16);
+    else atlas::draw9(atlas::get(s == Style::Dark ? "ui/panel_dark" : "ui/panel"), r.x, r.y, r.w, r.h, 70, 24);
+}
+
+void ribbon(const std::string& text, float cx, float y, float w) {
+    // лента из ткани: концы с хвостами не растягиваются, середина тянется (3-slice)
+    const atlas::Sprite* s = atlas::get("ui/ribbon");
+    if (s) {
+        float h = 50, k = h / s->h, cap = 120 * k, cu = 120 / s->w * (s->u1 - s->u0);
+        float x0 = cx - w / 2 - cap * 0.55f, x1 = cx + w / 2 + cap * 0.55f, top = y - 5;
+        gfx::rect(s->tex, x0, top, cap, h, s->u0, s->v0, s->u0 + cu, s->v1, 0xffffffffu);
+        gfx::rect(s->tex, x0 + cap, top, x1 - x0 - 2 * cap, h, s->u0 + cu, s->v0, s->u1 - cu, s->v1, 0xffffffffu);
+        gfx::rect(s->tex, x1 - cap, top, cap, h, s->u1 - cu, s->v0, s->u1, s->v1, 0xffffffffu);
+    }
+    font::draw(text, cx, y + 7, 21, 0xffffffffu, font::Center);
+}
+
+bool roundButton(float cx, float cy, float r, const std::string& ic, const std::string& text, Style s, bool enabled) {
+    Rect rect{cx - r, cy - r, r * 2, r * 2 + 18};
+    bool clicked = tapped(rect) && enabled;
+    bool pressed = activeId >= 0 && rect.contains(pressX, pressY) && rect.contains(curX, curY);
+    if (clicked) { audio::play("click", 0.6f); addBounce(rect); }
+    float k = bounceScale(rect, pressed);
+    gfx::pushScale(cx, cy, k);
+    const char* spr = s == Style::Gold ? "ui/round_gold" : s == Style::Green ? "ui/round_green" : s == Style::Red ? "ui/round_red" : "ui/round";
+    atlas::drawRect(atlas::get(spr), cx - r, cy - r, r * 2, r * 2, enabled ? 0xffffffffu : gfx::rgba(150, 150, 160, 220));
+    icon(ic, cx, cy - r * 0.06f, r * 1.25f, enabled ? 0xffffffffu : gfx::rgba(180, 180, 180, 220));
+    font::draw(text, cx, cy + r - 4, std::max(15.f, r * 0.34f), 0xffffffffu, font::Center);
+    gfx::popScale();
+    return clicked;
+}
+
+bool button(const Rect& r, const std::string& text, Style s, bool enabled, float textSize) {
+    bool clicked = tapped(r) && enabled;
+    bool pressed = activeId >= 0 && r.contains(pressX, pressY) && r.contains(curX, curY);
+    if (clicked) { audio::play("click", 0.6f); addBounce(r); }
+    float k = bounceScale(r, pressed && enabled);
+    gfx::pushScale(r.x + r.w / 2, r.y + r.h / 2, k);
+    uint32_t tint = enabled ? 0xffffffffu : gfx::rgba(150, 150, 160, 220);
+    atlas::draw9(atlas::get(styleSprite(s)), r.x, r.y, r.w, r.h, 56, 22, tint);
+    float ts = textSize > 0 ? textSize : std::min(20.f, r.h * 0.42f);
+    font::draw(text, r.x + r.w / 2, r.y + (r.h - 6 - font::lineHeight(ts)) / 2 + 1, ts, enabled ? 0xffffffffu : gfx::rgba(210, 210, 210), font::Center);
+    gfx::popScale();
+    return clicked;
+}
+
+bool iconButton(const Rect& r, const std::string& ic, const std::string& text, Style s, bool highlight) {
+    bool clicked = tapped(r);
+    bool pressed = activeId >= 0 && r.contains(pressX, pressY) && r.contains(curX, curY);
+    if (clicked) { audio::play("click", 0.6f); addBounce(r); }
+    float k = bounceScale(r, pressed);
+    gfx::pushScale(r.x + r.w / 2, r.y + r.h / 2, k);
+    if (highlight) atlas::draw9(atlas::get("ui/glow_frame"), r.x - 6, r.y - 6, r.w + 12, r.h + 12, 30, 18, gfx::rgba(255, 220, 120, 230));
+    atlas::draw9(atlas::get(styleSprite(s)), r.x, r.y, r.w, r.h, 56, 22);
+    icon(ic, r.x + r.w / 2, r.y + r.h * 0.38f, r.h * 0.62f);
+    font::draw(text, r.x + r.w / 2, r.y + r.h * 0.64f, std::min(14.f, r.h * 0.2f), 0xffffffffu, font::Center);
+    gfx::popScale();
+    return clicked;
+}
+
+bool tile(const Rect& r, const std::string& ic, const std::string& text, Style s, bool dim, const std::string& sub, const std::string& subIcon,
+          uint32_t subColor) {
+    bool clicked = tapped(r);
+    bool pressed = activeId >= 0 && r.contains(pressX, pressY) && r.contains(curX, curY);
+    if (clicked) { audio::play("click", 0.6f); addBounce(r); }
+    float k = bounceScale(r, pressed);
+    gfx::pushScale(r.x + r.w / 2, r.y + r.h / 2, k);
+    uint32_t tint = dim ? gfx::rgba(150, 146, 160, 235) : 0xffffffffu;
+    atlas::draw9(atlas::get(styleSprite(dim ? Style::Dark : s)), r.x, r.y, r.w, r.h, 56, 22, tint);
+    bool two = !sub.empty();
+    float isz = r.h * (two ? 0.36f : 0.44f);
+    icon(ic, r.x + r.w / 2, r.y + 8 + isz / 2, isz, dim ? gfx::rgba(190, 186, 200, 230) : 0xffffffffu);
+    float ly = r.y + 12 + isz;
+    font::draw(text, r.x + r.w / 2, ly, 15, dim ? gfx::rgba(215, 210, 225) : 0xffffffffu, font::Center);
+    if (two) {
+        float ts = 15, w = font::measure(sub, ts) + (subIcon.empty() ? 0 : ts + 4);
+        float x = r.x + r.w / 2 - w / 2;
+        if (!subIcon.empty()) { icon(subIcon, x + ts / 2, ly + 22 + ts * 0.62f, ts * 1.3f); x += ts + 4; }
+        font::draw(sub, x, ly + 22, ts, subColor);
+    }
+    gfx::popScale();
+    return clicked;
+}
+
+void countBadge(float cx, float cy, int n) {
+    if (n <= 0) return;
+    std::string t = n > 9 ? "9+" : std::to_string(n);
+    atlas::drawRect(atlas::get("fx/dot"), cx - 14, cy - 14, 28, 28, gfx::rgba(30, 14, 20));
+    atlas::drawRect(atlas::get("fx/dot"), cx - 12, cy - 12, 24, 24, gfx::rgba(225, 55, 45));
+    font::draw(t, cx, cy - 9, 15, 0xffffffffu, font::Center, false);
+}
+
+void lockOverlay(const Rect& r, const std::string& reason) {
+    atlas::draw9(atlas::get("ui/card"), r.x, r.y, r.w, r.h, 40, 12, gfx::rgba(40, 28, 22, 150));
+    icon("icon/lock", r.x + r.w / 2, r.y + r.h * 0.36f, std::min(48.f, r.w * 0.4f));
+    float y = r.y + r.h * 0.36f + 30;
+    for (const auto& l : font::wrap(reason, 14, r.w - 16)) {
+        font::draw(l, r.x + r.w / 2, y, 14, 0xffffffffu, font::Center);
+        y += font::lineHeight(14);
+    }
+}
+
+void label(const std::string& text, float x, float y, float size, uint32_t color, int align) {
+    font::draw(text, x, y, size, color, (font::Align)align);
+}
+
+void bar(const Rect& r, float frac, uint32_t color) {
+    frac = std::clamp(frac, 0.f, 1.f);
+    atlas::draw9(atlas::get("ui/bar_bg"), r.x - 2, r.y - 2, r.w + 4, r.h + 4, 30, (r.h + 4) / 2);
+    if (frac > 0.01f) atlas::draw9(atlas::get("ui/bar_fill"), r.x + 1, r.y + 1, std::max(r.h, (r.w - 2) * frac), r.h - 2, 26, (r.h - 2) / 2, color);
+}
+
+namespace {
+float focusX = -1, focusY = -1;  // поле в фокусе (по положению)
+bool focusSeen = false;
+}
+
+bool textFocused() { return focusX >= 0; }
+
+bool textField(const Rect& r, std::string& text, const std::string& placeholder, int maxRunes) {
+    bool focused = std::fabs(focusX - r.x) < 1 && std::fabs(focusY - r.y) < 1;
+    if (tapped(r) && !focused) {
+        focusX = r.x;
+        focusY = r.y;
+        focused = true;
+        platform::showKeyboard(true);
+        input::takeText();
+    } else if (released && focused && !r.contains(relX, relY) && !hitPrev(relX, relY)) {
+        focusX = focusY = -1;
+        focused = false;
+        platform::showKeyboard(false);
+    }
+    bool submit = false;
+    if (focused) {
+        focusSeen = true;
+        auto in = input::takeText();
+        for (int i = 0; i < in.backspaces && !text.empty(); i++) {
+            size_t k = text.size() - 1;
+            while (k > 0 && (text[k] & 0xC0) == 0x80) k--;
+            text.erase(k);
+        }
+        for (size_t i = 0; i < in.chars.size(); i++) {
+            int runes = 0;
+            for (char c : text) runes += (c & 0xC0) != 0x80;
+            if (runes >= maxRunes) break;
+            text += in.chars[i];
+        }
+        submit = in.enter;
+    }
+    atlas::draw9(atlas::get("ui/bar_bg"), r.x, r.y, r.w, r.h, 30, std::min(18.f, r.h / 2));
+    float ts = std::min(18.f, r.h * 0.5f);
+    // показываем хвост длинного текста
+    std::string shown = text;
+    while (!shown.empty() && font::measure(shown, ts) > r.w - 30) {
+        size_t k = 1;
+        while (k < shown.size() && (shown[k] & 0xC0) == 0x80) k++;
+        shown.erase(0, k);
+    }
+    if (text.empty() && !focused) font::draw(placeholder, r.x + 14, r.y + (r.h - font::lineHeight(ts)) / 2, ts, gfx::rgba(170, 160, 190), font::Left, false);
+    else font::draw(shown, r.x + 14, r.y + (r.h - font::lineHeight(ts)) / 2, ts, 0xffffffffu, font::Left, false);
+    if (focused && std::fmod(uiTime, 1.f) < 0.55f) {
+        float cx = r.x + 16 + font::measure(shown, ts);
+        gfx::fillRect(cx, r.y + r.h * 0.22f, 2, r.h * 0.56f, 0xffffffffu);
+    }
+    return submit;
+}
+
+void icon(const std::string& name, float cx, float cy, float size, uint32_t color) {
+    const atlas::Sprite* s = atlas::get(name);
+    if (!s) return;
+    float k = size / std::max(s->w, s->h);
+    atlas::drawRect(s, cx - s->w * k / 2, cy - s->h * k / 2, s->w * k, s->h * k, color);
+}
+
+}  // namespace ui
