@@ -93,23 +93,38 @@ def cut(img):
     # «карманы» фона внутри контура: точно цвет и оттенок фона (серый камень с розоватым отливом не трогаем)
     base = filled | ((dist < 14) & (hd < 30) & (sa > 0.25))
     background = base.copy()
-    # ореол: цвет лежит на отрезке «фон -> тёплый свет» (свет фонаря, наложенный на фон)
-    warm = np.array([255, 205, 130], dtype=np.float32)
-    dv = warm - model
-    tt = ((a - model) * dv).sum(2) / np.maximum((dv ** 2).sum(2), 1)
-    resid = np.sqrt(((a - model - tt[..., None] * dv) ** 2).sum(2))
-    cand = ((hd < 28) & (sa > 0.22) & (va_ > vb_ + 10)) | ((tt > 0.06) & (tt < 0.9) & (resid < 26))
+    # ореол: цвет лежит на отрезке «фон -> свет» (тёплый свет фонаря или бирюзовый туман Эфира поверх фона)
+    glows = [np.array([255, 205, 130], np.float32), np.array([120, 235, 255], np.float32)]
+    best_t = np.zeros(a.shape[:2], np.float32)
+    best_r = np.full(a.shape[:2], 1e9, np.float32)
+    glow_id = np.zeros(a.shape[:2], np.int8)
+    for gi, gc in enumerate(glows):
+        dv = gc - model
+        tt = ((a - model) * dv).sum(2) / np.maximum((dv ** 2).sum(2), 1)
+        resid = np.sqrt(((a - model - tt[..., None] * dv) ** 2).sum(2))
+        better = (resid < best_r) & (tt > 0.06)
+        best_t = np.where(better, tt, best_t)
+        best_r = np.where(better, resid, best_r)
+        glow_id = np.where(better, gi, glow_id)
+    cand = ((hd < 28) & (sa > 0.22) & (va_ > vb_ + 10)) | ((best_t > 0.06) & (best_t < 0.9) & (best_r < 26))
+    # рост ореола только при плавном нарастании света (не больше 0.1 за пиксель по сглаженной карте): у ореола свет нарастает от фона
+    # постепенно, а освещённая земля или песок начинаются резким краем
+    bt = np.clip(best_t, 0, 1)
+    bt = np.asarray(Image.fromarray((bt * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(2.5)), np.float32) / 255
+    tmap = np.where(background, bt, 0.0).astype(np.float32)
     for _ in range(600):
         grown = background.copy()
-        grown[1:] |= background[:-1]
-        grown[:-1] |= background[1:]
-        grown[:, 1:] |= background[:, :-1]
-        grown[:, :-1] |= background[:, 1:]
+        for sl_dst, sl_src in (((slice(1, None),), (slice(None, -1),)), ((slice(None, -1),), (slice(1, None),)),
+                               ((slice(None), slice(1, None)), (slice(None), slice(None, -1))),
+                               ((slice(None), slice(None, -1)), (slice(None), slice(1, None)))):
+            ok = background[sl_src] & (bt[sl_dst] <= tmap[sl_src] + 0.1)
+            grown[sl_dst] |= ok
         grown &= cand | background
         if (grown == background).all():
             break
+        tmap = np.where(grown & ~background, bt, tmap)
         background = grown
-    halo = background & (va_ > vb_ + 12)  # свет поверх фона — и внутри залитой области, и в разросшемся ореоле
+    halo = background & ((va_ > vb_ + 12) | (best_t > 0.12)) & (best_r < 40)  # свет поверх фона
     # бахрома: пиксели фонового оттенка у самой границы (кромка, смешанная с фоном)
     near_bg = background.copy()
     for _ in range(3):
@@ -124,10 +139,15 @@ def cut(img):
     edge = (alpha > 0) & (alpha < 1)
     a2 = a.copy()
     a2[edge] = np.clip((a[edge] - model[edge] * (1 - alpha[edge, None])) / np.maximum(alpha[edge, None], 0.3), 0, 255)
-    dvec = warm - model[halo]
-    ha_ = np.clip(((a[halo] - model[halo]) * dvec).sum(1) / np.maximum((dvec ** 2).sum(1), 1), 0, 1) * 0.8
-    a2[halo] = warm
-    alpha[halo] = np.maximum(alpha[halo], ha_)
+    # отсвет фона внутри постройки (стекло фонаря, рефлексы): гасим пурпур — R и B не выше G
+    spill = (alpha > 0.5) & ~halo & (hd < 40) & (sa > 0.15)
+    mn = np.minimum(a2[..., 0], a2[..., 2])
+    excess = np.clip(mn - a2[..., 1], 0, None) * spill
+    a2[..., 0] -= excess * 0.85
+    a2[..., 2] -= excess
+    gcol = np.stack(glows)[glow_id[halo]]
+    a2[halo] = gcol
+    alpha[halo] = np.maximum(alpha[halo], np.clip(best_t[halo], 0, 1) * 0.8)
     rgba = np.dstack([a2, alpha * 255]).astype(np.uint8)
     return Image.fromarray(rgba, "RGBA")
 
