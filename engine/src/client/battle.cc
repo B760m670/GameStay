@@ -238,7 +238,7 @@ void App::drawBattleWorld() {
         cam.oy += std::cos(t * 47) * k * 0.7f;
     }
     world::drawGround(cam);
-    for (const auto& b : B.buildings) if (b.isStructure()) world::drawDirt(cam, (float)b.x, (float)b.y, (float)b.size);
+    for (const auto& b : B.buildings) if (b.isStructure()) world::drawContactShadow(cam, (float)b.x, (float)b.y, (float)b.size);
     world::drawMeadow(cam, t);
     bool tint = bt.kind != BattleKind::Night && bt.sel >= 0 && !isSpellSel(bt.sel) && !B.ended;
     world::drawFog(cam, B.sources, B.eclipses, t, 0.36f, tint);

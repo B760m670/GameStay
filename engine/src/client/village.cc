@@ -385,7 +385,7 @@ void App::drawVillageWorld() {
     lf::VillageState view = S;
     if (placing.active && placing.moveId >= 0)
         for (auto& b : view.buildings) if (b.id == placing.moveId) { b.x = placing.x; b.y = placing.y; }
-    for (const auto& b : view.buildings) if (b.type != lf::BType::Wall && b.type != lf::BType::Trap) world::drawDirt(cam, (float)b.x, (float)b.y, (float)b.def().size);
+    for (const auto& b : view.buildings) if (b.type != lf::BType::Wall && b.type != lf::BType::Trap) world::drawContactShadow(cam, (float)b.x, (float)b.y, (float)b.def().size);
     world::drawMeadow(cam, t);
     world::drawFog(cam, V::sources(view), {}, t, 0.22f);
     world::drawWaterFx(cam, t);

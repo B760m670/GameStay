@@ -141,11 +141,12 @@ void drawGround(const Camera& cam) {
         }
 }
 
-void drawDirt(const Camera& cam, float x, float y, float size) {
+// Мягкая тень у основания постройки: здание «стоит» на траве без подложки.
+void drawContactShadow(const Camera& cam, float x, float y, float size) {
     Vec2 c = cam.toScreen(x + size / 2, y + size / 2);
-    float rx = (size + 0.9f) * kTW * cam.zoom / 2, ry = rx / 2;
-    ellipseSprite("fx/soft", c.x, c.y, rx * 1.05f, ry * 1.05f, rgba(92, 70, 44, 120));
-    ellipseSprite("fx/soft", c.x, c.y, rx * 0.8f, ry * 0.8f, rgba(110, 84, 52, 110));
+    float rx = size * kTW * cam.zoom / 2, ry = rx / 2;
+    ellipseSprite("fx/soft", c.x + rx * 0.06f, c.y + ry * 0.08f, rx * 0.92f, ry * 0.92f, rgba(8, 20, 6, 70));
+    ellipseSprite("fx/soft", c.x + rx * 0.04f, c.y + ry * 0.05f, rx * 0.66f, ry * 0.66f, rgba(8, 18, 6, 60));
 }
 
 namespace {
@@ -467,6 +468,18 @@ void drawFootprint(const Camera& cam, float x, float y, float size, uint32_t col
     gfx::quad(gfx::white(), v);
 }
 
+// Контур занятых клеток (выбор и перенос постройки): ромб из четырёх линий.
+void drawFootprintOutline(const Camera& cam, float x, float y, float size, uint32_t color, float width) {
+    Vec2 p[4] = {cam.toScreen(x, y), cam.toScreen(x + size, y), cam.toScreen(x + size, y + size), cam.toScreen(x, y + size)};
+    for (int i = 0; i < 4; i++) {
+        Vec2 a = p[i], b = p[(i + 1) % 4];
+        float dx = b.x - a.x, dy = b.y - a.y, len = std::max(1e-3f, std::hypot(dx, dy));
+        float nx = -dy / len * width / 2, ny = dx / len * width / 2;
+        gfx::Vtx v[4] = {{a.x + nx, a.y + ny, 0, 0, color}, {b.x + nx, b.y + ny, 0, 0, color}, {b.x - nx, b.y - ny, 0, 0, color}, {a.x - nx, a.y - ny, 0, 0, color}};
+        gfx::quad(gfx::white(), v);
+    }
+}
+
 void drawBarAt(const Camera& cam, float wx, float wy, float z, float frac, uint32_t color, float width) {
     Vec2 p = cam.toScreen(wx, wy, z);
     float w = width * std::max(0.6f, cam.zoom), h = 6;
@@ -478,10 +491,15 @@ void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level
     const auto& def = lf::B(type);
     float s = (float)def.size;
     Vec2 c = cam.toScreen(x + s / 2, y + s / 2);
-    if (look.ghost) drawFootprint(cam, x, y, s, look.ghost > 0 ? rgba(90, 255, 120, 90) : rgba(255, 60, 60, 110));
-    if (look.selected) {
+    if (look.ghost) {
+        uint32_t fill = look.ghost > 0 ? rgba(90, 255, 120, 70) : rgba(255, 70, 60, 90), line = look.ghost > 0 ? rgba(150, 255, 160, 230) : rgba(255, 120, 100, 240);
+        drawFootprint(cam, x, y, s, fill);
+        drawFootprintOutline(cam, x, y, s, line, 2.5f);
+    }
+    if (look.selected) {  // квадрат подсветки занятых клеток вместо подложки
         float pulse = 0.5f + 0.5f * std::sin(t * 5);
-        drawFootprint(cam, x - 0.15f, y - 0.15f, s + 0.3f, rgba(255, 230, 120, (int)(50 + 50 * pulse)));
+        drawFootprint(cam, x, y, s, rgba(255, 236, 160, (int)(34 + 26 * pulse)));
+        drawFootprintOutline(cam, x, y, s, rgba(255, 226, 130, (int)(170 + 70 * pulse)), 2.5f);
     }
     const atlas::Sprite* sp = buildingSprite(type, level);
     if (const atlas::Sprite* ts = turretSprite(type, level, look.angle)) sp = ts;

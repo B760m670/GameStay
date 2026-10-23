@@ -14,8 +14,8 @@ const atlas::Sprite* buildingSprite(lf::BType type, int level);
 
 constexpr int kPad = 9;  // сколько клеток мира рисуем за краем игрового поля (лес, скалы)
 void drawGround(const Camera& cam);
-// Утоптанная земля под постройкой.
-void drawDirt(const Camera& cam, float x, float y, float size);
+// Мягкая тень у основания постройки (подложек под зданиями нет).
+void drawContactShadow(const Camera& cam, float x, float y, float size);
 // Детали луга (трава, цветы, камешки) — под постройками.
 void drawMeadow(const Camera& cam, float t);
 // Блики на ручье и рябь на пруду (поверх тумана — лунный свет на воде).
@@ -46,6 +46,7 @@ struct BuildingLook {
 };
 void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level, const BuildingLook& look, float t);
 void drawFootprint(const Camera& cam, float x, float y, float size, uint32_t color);
+void drawFootprintOutline(const Camera& cam, float x, float y, float size, uint32_t color, float width = 2.f);
 // Сетка клеток вокруг точки (при перемещении постройки), гаснет к краю радиуса.
 void drawGridAround(const Camera& cam, float cx, float cy, float r);
 void drawBarAt(const Camera& cam, float wx, float wy, float z, float frac, uint32_t color, float width = 40);
