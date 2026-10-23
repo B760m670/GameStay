@@ -35,7 +35,7 @@ void init() {
     gfx::init();
     std::string assets = platform::assetDir();
     atlas::load(assets + "/atlas");
-    font::load(assets + "/fonts/Philosopher-Bold.ttf", 56);
+    font::load(assets + "/fonts/Rubik-Bold.ttf", 56);
     if (!opt.shot) audio::init(assets + "/sfx");
     app.init();
     if (!opt.keepDialogue && opt.shot) app.skipDialogue();

@@ -11,7 +11,7 @@ namespace client {
 using gfx::rgba;
 
 namespace {
-const uint32_t kInk = rgba(70, 44, 30), kInkSoft = rgba(120, 92, 66), kGold = rgba(255, 216, 107), kBad = rgba(255, 140, 130);
+const uint32_t kInk = rgba(242, 236, 255), kInkSoft = rgba(176, 164, 214), kGold = rgba(255, 216, 107), kBad = rgba(255, 140, 130);
 }
 
 bool App::onlineOffline(const ui::Rect& body) {
@@ -44,7 +44,7 @@ void App::drawChat() {
         }
         tx += w + 6;
     }
-    font::draw(online.chatConnected() ? "в сети" : "нет связи", body.x + body.w, body.y + 8, 13, online.chatConnected() ? rgba(60, 140, 50) : kBad,
+    font::draw(online.chatConnected() ? "в сети" : "нет связи", body.x + body.w, body.y + 8, 13, online.chatConnected() ? rgba(120, 220, 110) : kBad,
                font::Right, false);
     // сообщения снизу вверх
     const auto& list = chatTab == 0 ? online.global : online.clan;
@@ -64,12 +64,12 @@ void App::drawChat() {
         if (y < area.y + 6) break;
         float ly = y;
         for (const auto& l : lines) {
-            font::draw(l, area.x + 14, ly, ts, m.system ? kInkSoft : m.from == online.playerId() ? rgba(40, 90, 150) : kInk, font::Left, false);
+            font::draw(l, area.x + 14, ly, ts, m.system ? kInkSoft : m.from == online.playerId() ? rgba(140, 200, 255) : kInk, font::Left, false);
             ly += font::lineHeight(ts);
         }
         if (!m.system && m.from != online.playerId() && m.id > 0) {
             ui::Rect rb{area.x + area.w - 40, y - 2, 30, 24};
-            font::draw("!", rb.x + rb.w / 2, rb.y + 2, 15, rgba(170, 70, 50), font::Center, false);
+            font::draw("!", rb.x + rb.w / 2, rb.y + 2, 15, rgba(255, 140, 120), font::Center, false);
             if (ui::tapped(rb)) { online.report(m.id); toast("Жалоба отправлена — спасибо", kGold); }
         }
     }

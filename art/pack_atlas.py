@@ -77,7 +77,7 @@ def outlined(img, width=7, color=(28, 16, 36)):
 
 from PIL import ImageEnhance  # noqa: E402
 
-for png in sorted(glob.glob(os.path.join(SRC, "ui", "*.png"))):
+for png in (sorted(glob.glob(os.path.join(SRC, "ui", "*.png"))) if os.environ.get("LF_UI3D") else []):  # старый набор: дерево и пергамент
     im = Image.open(png).convert("RGBA")
     rgb = ImageEnhance.Contrast(ImageEnhance.Color(im.convert("RGB")).enhance(1.25)).enhance(1.06)
     rgb.putalpha(im.getchannel("A"))
@@ -89,6 +89,8 @@ for extra in ("badge", "shelf", "round_red"):  # новые элементы, к
 ICON3D = {}
 for png in sorted(glob.glob(os.path.join(SRC, "icons", "*.png"))):
     name = os.path.basename(png)[:-4]
+    if name == "army":
+        continue  # армию обозначает меч (рисуется ниже), а не молот
     ICON3D[name] = outlined(Image.open(png))
 
 # ---------- земля ----------
@@ -181,8 +183,6 @@ def rounded_box(w, h, r, top, bottom, border, border_w=3, inner=None, gloss=True
     return smooth(fn, w, h)
 
 
-add("ui/panel", rounded_box(96, 96, 20, (58, 44, 92), (34, 25, 58), (20, 12, 34), 4, (120, 100, 170), gloss=False), trim=False)
-add("ui/panel_dark", rounded_box(96, 96, 20, (26, 20, 44), (16, 12, 30), (8, 5, 16), 4, (70, 60, 110), gloss=False), trim=False)
 def chunky_button(top, bottom, lip, w=112, h=112, r=26):
     """Кнопка в стиле мобильных стратегий: толстая обводка, «бортик» снизу, глянцевый блик."""
     def fn(d, s, im):
@@ -209,11 +209,6 @@ def chunky_button(top, bottom, lip, w=112, h=112, r=26):
     return smooth(fn, w, h)
 
 
-add("ui/btn", chunky_button((128, 112, 200), (82, 66, 150), (52, 38, 100)), trim=False)
-add("ui/btn_gold", chunky_button((255, 222, 96), (240, 150, 30), (170, 90, 20)), trim=False)
-add("ui/btn_green", chunky_button((168, 236, 96), (82, 176, 56), (40, 110, 34)), trim=False)
-add("ui/btn_red", chunky_button((250, 120, 100), (206, 60, 50), (130, 30, 30)), trim=False)
-add("ui/btn_dark", chunky_button((92, 82, 124), (58, 50, 86), (34, 28, 54)), trim=False)
 
 
 def round_button(top, bottom, lip, size=128):
@@ -236,9 +231,6 @@ def round_button(top, bottom, lip, size=128):
     return smooth(fn, size, size)
 
 
-add("ui/round", round_button((128, 112, 200), (82, 66, 150), (52, 38, 100)), trim=False)
-add("ui/round_gold", round_button((255, 222, 96), (240, 150, 30), (170, 90, 20)), trim=False)
-add("ui/round_green", round_button((168, 236, 96), (82, 176, 56), (40, 110, 34)), trim=False)
 
 
 def paper_panel(w=128, h=128, r=26):
@@ -266,14 +258,114 @@ def paper_panel(w=128, h=128, r=26):
     return smooth(fn, w, h)
 
 
-add("ui/paper", paper_panel(), trim=False)
-add("ui/card", rounded_box(96, 96, 18, (255, 246, 222), (232, 214, 176), (120, 84, 50), 3, (255, 255, 240), gloss=False), trim=False)
-add("ui/card_dark", rounded_box(96, 96, 18, (190, 176, 150), (160, 146, 120), (90, 66, 44), 3, gloss=False), trim=False)
-add("ui/ribbon", rounded_box(128, 48, 14, (120, 70, 180), (80, 40, 130), (24, 12, 40), 4, (190, 150, 240)), trim=False)
-add("ui/bar_bg", rounded_box(48, 24, 12, (20, 14, 30), (34, 26, 50), (10, 6, 16), 2, gloss=False), trim=False)
-add("ui/bar_fill", rounded_box(48, 20, 10, (255, 255, 255), (200, 200, 200), (255, 255, 255), 1), trim=False)
 frame = smooth(lambda d, s, im: d.rounded_rectangle((6 * s, 6 * s, 90 * s, 90 * s), 22 * s, outline=(255, 255, 255, 255), width=5 * s), 96, 96)
 add("ui/glow_frame", frame.filter(ImageFilter.GaussianBlur(3)), trim=False)
+
+
+# ---------- интерфейс «ночное стекло» ----------
+# Тёмно-индиговые полупрозрачные панели с тонкой светлой кромкой, тёплое золото как акцент,
+# объёмные кнопки с нижней гранью. Размеры спрайтов согласованы с рамками draw9 в коде (панель 70, карточка 40, кнопка 56).
+def vgrad(w, h, top, bottom):
+    g = Image.new("RGBA", (w, h))
+    gd = ImageDraw.Draw(g)
+    for y in range(h):
+        t = y / max(1, h - 1)
+        gd.line((0, y, w, y), fill=tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(4)))
+    return g
+
+
+def glass(w, h, r, top, bottom, rim, inset_line=None, shadow=True):
+    def fn(d, s, im):
+        W, H, R = w * s, h * s, r * s
+        pad = 6 * s if shadow else 0
+        if shadow:  # мягкая тень под панелью
+            sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            ImageDraw.Draw(sh).rounded_rectangle((pad, pad + 3 * s, W - pad, H - 1), R, fill=(4, 2, 12, 150))
+            im.alpha_composite(sh.filter(ImageFilter.GaussianBlur(4 * s)))
+        m = Image.new("L", (W, H), 0)
+        ImageDraw.Draw(m).rounded_rectangle((pad, pad, W - pad - 1, H - pad - 1), R, fill=255)
+        body = vgrad(W, H, top, bottom)
+        layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        layer.paste(body, (0, 0), m)
+        im.alpha_composite(layer)
+        dd = ImageDraw.Draw(im)
+        dd.rounded_rectangle((pad, pad, W - pad - 1, H - pad - 1), R, outline=(6, 4, 14, 230), width=2 * s)
+        dd.rounded_rectangle((pad + 2 * s, pad + 2 * s, W - pad - 2 * s - 1, H - pad - 2 * s - 1), R - 2 * s, outline=rim, width=2 * s)
+        # верхний блик стекла
+        hl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ImageDraw.Draw(hl).rounded_rectangle((pad + 4 * s, pad + 4 * s, W - pad - 4 * s, pad + R), R - 4 * s, fill=(255, 255, 255, 14))
+        im.alpha_composite(hl)
+        if inset_line:
+            dd.rounded_rectangle((pad + 9 * s, pad + 9 * s, W - pad - 9 * s - 1, H - pad - 9 * s - 1), R - 8 * s, outline=inset_line, width=s)
+    return smooth(fn, w, h)
+
+
+def candy(top, bottom, lip, w=160, h=160, r=44, circle=False):
+    """Объёмная кнопка: тёмный контур, нижняя грань (толщина), градиентное лицо, мягкий блик."""
+    def fn(d, s, im):
+        W, H, R, L = w * s, h * s, r * s, 12 * s
+        shape = (lambda dr, box, **k: dr.ellipse(box, **k)) if circle else (lambda dr, box, **k: dr.rounded_rectangle(box, R, **k))
+        shape(d, (0, L, W - 1, H - 1), fill=(10, 6, 20, 255))
+        shape(d, (3 * s, L, W - 3 * s - 1, H - 3 * s - 1), fill=lip + (255,))
+        m = Image.new("L", (W, H), 0)
+        shape(ImageDraw.Draw(m), (3 * s, 3 * s, W - 3 * s - 1, H - L - 3 * s), fill=255)
+        face = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        face.paste(vgrad(W, H, top + (255,), bottom + (255,)), (0, 0), m)
+        im.alpha_composite(face)
+        shape(ImageDraw.Draw(im), (0, 0, W - 1, H - L), outline=(10, 6, 20, 255), width=3 * s)
+        gl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        if circle:
+            ImageDraw.Draw(gl).ellipse((W * 0.2, 7 * s, W * 0.8, H * 0.4), fill=(255, 255, 255, 60))
+        else:
+            ImageDraw.Draw(gl).rounded_rectangle((9 * s, 7 * s, W - 9 * s, H * 0.36), R - 8 * s, fill=(255, 255, 255, 52))
+        im.alpha_composite(gl.filter(ImageFilter.GaussianBlur(2 * s)))
+    return smooth(fn, w, h)
+
+
+BLUE = ((126, 178, 255), (66, 110, 226), (38, 62, 150))
+GOLD = ((255, 222, 120), (246, 166, 44), (168, 96, 18))
+GREEN = ((150, 232, 110), (58, 178, 74), (30, 112, 46))
+RED = ((255, 128, 112), (222, 62, 64), (140, 28, 38))
+DARK = ((88, 78, 128), (56, 48, 90), (32, 26, 56))
+
+add("ui/panel", glass(192, 192, 46, (44, 36, 80, 238), (26, 20, 50, 238), (150, 132, 230, 110)), trim=False)
+add("ui/panel_dark", glass(192, 192, 46, (26, 21, 48, 228), (16, 12, 32, 228), (120, 104, 190, 80)), trim=False)
+add("ui/paper", glass(192, 192, 46, (40, 33, 74, 246), (22, 17, 44, 246), (160, 140, 240, 110), inset_line=(255, 200, 110, 70)), trim=False)
+add("ui/card", glass(128, 128, 30, (64, 53, 110, 255), (46, 37, 82, 255), (170, 150, 240, 90), shadow=False), trim=False)
+add("ui/card_dark", glass(128, 128, 30, (34, 28, 58, 255), (26, 21, 46, 255), (100, 88, 150, 70), shadow=False), trim=False)
+add("ui/ribbon", glass(128, 48, 20, (52, 42, 94, 240), (32, 26, 62, 240), (255, 200, 110, 120), shadow=False), trim=False)
+add("ui/bar_bg", glass(96, 60, 28, (10, 7, 22, 235), (22, 17, 40, 235), (110, 96, 170, 70), shadow=False), trim=False)
+def bar_fill(d, s, im):
+    W, H = 96 * s, 52 * s
+    d.rounded_rectangle((0, 0, W - 1, H - 1), 26 * s, fill=(236, 236, 236, 255))
+    d.rounded_rectangle((6 * s, 5 * s, W - 6 * s, H * 0.42), 18 * s, fill=(255, 255, 255, 255))
+
+
+add("ui/bar_fill", smooth(bar_fill, 96, 52), trim=False)
+for nm, c in (("btn", BLUE), ("btn_gold", GOLD), ("btn_green", GREEN), ("btn_red", RED), ("btn_dark", DARK)):
+    add("ui/" + nm, candy(*c), trim=False)
+for nm, c in (("round", BLUE), ("round_gold", GOLD), ("round_green", GREEN), ("round_red", RED)):
+    add("ui/" + nm, candy(*c, w=192, h=192, circle=True), trim=False)
+
+
+def level_badge(d, s, im):
+    """Значок уровня: золотое кольцо и синий самоцвет."""
+    S = 192 * s
+    d.ellipse((4 * s, 4 * s, S - 4 * s, S - 4 * s), fill=(10, 6, 20, 255))
+    d.ellipse((10 * s, 10 * s, S - 10 * s, S - 10 * s), fill=(246, 176, 54, 255))
+    d.ellipse((18 * s, 14 * s, S - 18 * s, S - 30 * s), fill=(255, 226, 130, 255))
+    d.ellipse((26 * s, 26 * s, S - 26 * s, S - 26 * s), fill=(10, 6, 20, 255))
+    g = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    m = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(m).ellipse((31 * s, 31 * s, S - 31 * s, S - 31 * s), fill=255)
+    g.paste(vgrad(S, S, (110, 170, 255, 255), (52, 82, 200, 255)), (0, 0), m)
+    im.alpha_composite(g)
+    hl = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    ImageDraw.Draw(hl).ellipse((50 * s, 38 * s, S - 50 * s, S * 0.45), fill=(255, 255, 255, 60))
+    im.alpha_composite(hl.filter(ImageFilter.GaussianBlur(3 * s)))
+
+
+add("ui/badge", smooth(level_badge, 192, 192), trim=False)
 
 
 def icon(name, fn, size=128):

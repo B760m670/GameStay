@@ -15,7 +15,7 @@ using gfx::rgba;
 namespace V = lf::village;
 
 namespace {
-const uint32_t kInk = rgba(70, 44, 30), kInkSoft = rgba(120, 92, 66);
+const uint32_t kInk = rgba(242, 236, 255), kInkSoft = rgba(176, 164, 214);
 const uint32_t kGold = rgba(255, 216, 107), kMuted = rgba(190, 178, 215), kOre = rgba(240, 160, 80), kAether = rgba(134, 220, 255), kBad = rgba(255, 140, 130);
 
 const char* resIcon(lf::Res r) { return r == lf::Res::Ore ? "icon/ore" : r == lf::Res::Aether ? "icon/aether" : "icon/shard"; }
@@ -629,11 +629,11 @@ void App::drawWorkshop() {
         char buf[48];
         std::snprintf(buf, sizeof buf, "+%d%% силы", (int)std::lround((V::troopMult(lv) - 1) * 100));
         font::draw(buf, cx + cw / 2, cy + ch * 0.5f + 42, 12, kInkSoft, font::Center, false);
-        if (S.researchType == i) font::draw("куётся...", cx + cw / 2, cy + ch - 30, 14, rgba(40, 130, 40), font::Center, false);
+        if (S.researchType == i) font::draw("куётся...", cx + cw / 2, cy + ch - 30, 14, rgba(130, 230, 120), font::Center, false);
         else if (lv >= V::kMaxTroopLevel) font::draw("максимум", cx + cw / 2, cy + ch - 30, 13, kInkSoft, font::Center, false);
         else if (unlocked) {
             int cost = V::researchCost(type, lv + 1);
-            costLabel(lf::Res::Aether, cost, cx + cw / 2, cy + ch - 46, 14, S.aether >= cost ? kInk : rgba(200, 50, 40), 1);
+            costLabel(lf::Res::Aether, cost, cx + cw / 2, cy + ch - 46, 14, S.aether >= cost ? kInk : rgba(255, 130, 120), 1);
             font::draw(fmtTime(V::researchTime(type, lv + 1)), cx + cw / 2, cy + ch - 24, 12, kInkSoft, font::Center, false);
         } else font::draw("не открыт", cx + cw / 2, cy + ch - 30, 13, kInkSoft, font::Center, false);
         if (ui::tapped(r) && unlocked && S.researchType != i) {
@@ -839,7 +839,7 @@ void App::drawInfo() {
         ui::panel({tx, ty, tw, 30}, ui::Style::Card);
         font::draw(name, tx + 12, ty + 6, 15, kInk, font::Left, false);
         font::draw(cur, tx + tw * 0.62f, ty + 6, 15, kInk, font::Left, false);
-        if (hasNext && nxt != cur) font::draw("» " + nxt, tx + tw * 0.78f, ty + 6, 15, rgba(40, 130, 40), font::Left, false);
+        if (hasNext && nxt != cur) font::draw("» " + nxt, tx + tw * 0.78f, ty + 6, 15, rgba(130, 230, 120), font::Left, false);
         ty += 34;
     };
     char a[32], c[32];
@@ -873,12 +873,18 @@ void App::drawPlacingPanel() {
 // ---------- модальные окна ----------
 bool App::modalFrame(const char* title, float w, float h, ui::Rect& body) {
     w = std::min(w, cam.w - 2 * safeX);
-    h = std::min(h, cam.h - 26);
-    float x = cam.w / 2 - w / 2, y = cam.h / 2 - h / 2 + 8;
+    h = std::min(h, cam.h - 20);
+    float x = cam.w / 2 - w / 2, y = cam.h / 2 - h / 2;
     ui::panel({x, y, w, h}, ui::Style::Paper);
-    ui::ribbon(title, cam.w / 2, y - 18, std::max(220.f, font::measure(title, 21) + 70));
-    body = {x + 18, y + 32, w - 36, h - 46};
-    if (ui::button({x + w - 34, y - 14, 46, 46}, "×", ui::Style::Red, true, 22)) { modal = Modal::None; audio::play("close", 0.6f); return false; }
+    // шапка: золотой заголовок слева, тонкая линия, крестик справа
+    font::draw(title, x + 26, y + 18, 24, kGold);
+    gfx::fillRect(x + 22, y + 58, w - 44, 1.5f, rgba(255, 200, 110, 70));
+    body = {x + 22, y + 72, w - 44, h - 90};
+    if (ui::roundButton(x + w - 38, y + 36, 20, "icon/close", "", ui::Style::Red, true)) {
+        modal = Modal::None;
+        audio::play("close", 0.6f);
+        return false;
+    }
     return true;
 }
 
@@ -1129,7 +1135,7 @@ void App::drawCodex() {
     codexPage = std::clamp(codexPage, 0, pages - 1);
     float y = body.y;
     for (int i = codexPage * perPage; i < std::min((int)entries.size(), (codexPage + 1) * perPage); i++) {
-        font::draw(entries[i]->title, body.x + 4, y, 21, rgba(150, 80, 30), font::Left, false);
+        font::draw(entries[i]->title, body.x + 4, y, 21, rgba(255, 210, 120), font::Left, false);
         y += 30;
         for (const auto& l : font::wrap(entries[i]->text, 17, body.w - 10)) { font::draw(l, body.x + 4, y, 17, kInk, font::Left, false); y += font::lineHeight(17); }
         y += 10;
