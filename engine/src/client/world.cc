@@ -157,8 +157,9 @@ std::vector<Detail>& meadow() {
     built = true;
     // рисованные мелочи луга (art/source/generated/sheet_ground): трава, высокая трава, папоротник, колокольчики, маки,
     // ромашки, камешки, грибы — трава чаще прочего
-    static const char* kinds[] = {"b/decor_gd1", "b/decor_gd10", "b/decor_gd1", "b/decor_gd8", "b/decor_gd11", "b/decor_gd16",
-                                  "b/decor_gd5", "b/decor_gd1", "b/decor_gd3", "b/decor_gd6", "b/decor_gd10"};
+    // gd1 трава, gd2 высокая трава, gd16 папоротник, gd3/gd5 колокольчики, gd8 маки, gd13 ромашки, gd14 грибы
+    static const char* kinds[] = {"b/decor_gd1", "b/decor_gd2", "b/decor_gd1", "b/decor_gd16", "b/decor_gd3", "b/decor_gd8",
+                                  "b/decor_gd13", "b/decor_gd1", "b/decor_gd2", "b/decor_gd14", "b/decor_gd5"};
     for (int j = lf::kBorder; j < lf::kGrid - lf::kBorder; j++)
         for (int i = lf::kBorder; i < lf::kGrid - lf::kBorder; i++) {
             uint32_t h = hash2(i * 3 + 7, j * 5 + 11);
@@ -511,6 +512,8 @@ void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level
     uint32_t col = rgba((int)(255 * dim), (int)(255 * dim), (int)(255 * std::min(1.f, dim * 1.08f)), (int)(255 * look.alpha * (look.constructing ? 0.75f : 1)));
     if (!look.ghost) col = lightTint(x + s / 2, y + s / 2, col);
     if (look.hitFlash > 0) c.x += std::sin(t * 90) * look.hitFlash * 6 * cam.zoom;
+    bool popping = look.pop >= 0 && look.pop < 1;
+    if (popping) gfx::pushScale(c.x, c.y, 1 + 0.13f * std::sin(look.pop * 9.42f) * (1 - look.pop));  // затухающая пружина от основания
     if (sp) {
         atlas::draw(sp, c.x, c.y, cam.zoom * 0.5f, col);
     } else {
@@ -521,6 +524,7 @@ void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level
         atlas::draw(sp, c.x, c.y, cam.zoom * 0.5f, rgba(255, 255, 255, (int)(look.hitFlash * 500)));
         gfx::setBlend(gfx::Blend::Alpha);
     }
+    if (popping) gfx::popScale();
     if (look.stunned > 0) {  // ослеплена: над башней кружат искры
         Vec2 p = cam.toScreen(x + s / 2, y + s / 2, 60 + s * 8);
         for (int i = 0; i < 3; i++) {

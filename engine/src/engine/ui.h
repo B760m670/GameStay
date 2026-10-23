@@ -34,6 +34,14 @@ bool textFocused();
 void icon(const std::string& name, float cx, float cy, float size, uint32_t color = 0xffffffffu);
 // Круглая кнопка действия (как под выбранным зданием в CoC): иконка внутри, подпись снизу.
 bool roundButton(float cx, float cy, float r, const std::string& icon, const std::string& label, Style s = Style::Normal, bool enabled = true);
+// Плитка действия (панель выбранной постройки): иконка, подпись и необязательная вторая строка — цена с иконкой ресурса.
+// dim — приглушить (действие сейчас недоступно), но касание всё равно сообщается, чтобы показать причину.
+bool tile(const Rect& r, const std::string& icon, const std::string& label, Style s, bool dim = false, const std::string& sub = "",
+          const std::string& subIcon = "", uint32_t subColor = 0xffffffffu);
+// Красный кружок со счётчиком (непрочитанное, готовые награды).
+void countBadge(float cx, float cy, int n);
+// Замок поверх недоступной карточки: затемнение, значок и причина.
+void lockOverlay(const Rect& r, const std::string& reason);
 // Лента-заголовок.
 void ribbon(const std::string& text, float cx, float y, float w);
 // Время для анимаций (секунды).

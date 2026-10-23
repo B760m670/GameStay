@@ -39,6 +39,12 @@ const lf::BType kShopTabs[4][6] = {
     {lf::BType::Barracks, lf::BType::Camp, lf::BType::Workshop, lf::BType::Count, lf::BType::Count, lf::BType::Count},
 };
 const char* kShopTabNames[4] = {"Оборона", "Свет и стены", "Экономика", "Армия"};
+
+float vrand() {
+    static uint32_t seed = 777;
+    seed = seed * 1664525u + 1013904223u;
+    return (seed >> 8) / 16777216.f;
+}
 }  // namespace
 
 void App::enterVillage() {
@@ -125,8 +131,21 @@ void App::enterVillage() {
             if (got > 0) toast("+" + fmtNum(got) + (rec->def().produces == lf::Res::Ore ? " руды" : " Эфира"), rec->def().produces == lf::Res::Ore ? kOre : kAether);
             else toast("Хранилища полны", kBad);
         }
+        if (selected != b) popAt[b] = t;
         selected = b;
     };
+}
+
+void App::celebrate(const lf::BuildingRec& b) {
+    popAt[b.id] = t;
+    audio::play("done", 0.8f);
+    float s = (float)b.def().size, cx = b.x + s / 2, cy = b.y + s / 2;
+    for (int i = 0; i < 26; i++) {  // золотые искры фейерверком
+        float a = vrand() * 6.283f, v = 0.8f + vrand() * 1.6f;
+        particles.push_back({cx, cy, 30 + vrand() * 40, std::cos(a) * v, std::sin(a) * v, 120 + vrand() * 160, 0.9f + vrand() * 0.6f, 0.9f, 5 + vrand() * 4,
+                             i % 3 ? rgba(255, 214, 110) : rgba(255, 250, 220), true});
+    }
+    toast(std::string(b.def().name) + (b.level > 1 ? ": уровень " + std::to_string(b.level) + "!" : " построен!"), kGold);
 }
 
 int App::buildingAt(float wx, float wy) const {
@@ -310,6 +329,7 @@ void App::confirmPlacing() {
     auto r = V::place(S, placing.type, placing.x, placing.y, now(), &id);
     if (!r.ok) { toast(r.reason, kBad); return; }
     audio::play("build", 0.8f, 0.9f + (id % 5) * 0.05f);
+    popAt[id] = t;  // постройка «приземляется»
     save();
     if (placing.type == lf::BType::Wall && V::canBuild(S, lf::BType::Wall, now()).ok) {
         placing.x += placing.dirX;
@@ -324,7 +344,14 @@ void App::confirmPlacing() {
 void App::villageFrame(float dt, const std::vector<input::Event>& worldEvents) {
     gest.process(worldEvents, cam);
     tickT += dt;
-    if (tickT > 0.25f) { tickT = 0; V::tick(S, now()); }
+    if (tickT > 0.25f) {
+        tickT = 0;
+        std::vector<int> busy;
+        for (const auto& b : S.buildings) if (b.busyUntil) busy.push_back(b.id);
+        V::tick(S, now());
+        for (int id : busy)
+            if (auto* b = V::get(S, id); b && !b->busyUntil) celebrate(*b);
+    }
     updateLife(dt);
     drawVillageWorld();
     drawVillageHud();
@@ -415,6 +442,7 @@ void App::drawVillageWorld() {
         look.selected = b.id == selected && !placing.active;
         look.constructing = b.level == 0;
         if (it.ghost || (placing.active && b.id == placing.moveId)) { look.ghost = placing.valid ? 1 : -1; look.alpha = 0.85f; }
+        if (auto it = popAt.find(b.id); it != popAt.end()) look.pop = (t - it->second) / 0.55f;
         world::drawBuilding(cam, b.type, (float)b.x, (float)b.y, std::max(1, b.level), look, t);
     }
     for (const auto& p : particles) if (!p.additive) world::drawParticle(cam, p);
@@ -447,32 +475,43 @@ void App::drawVillageWorld() {
 
 void App::drawVillageHud() {
     long long tnow = now();
-    // слева: щит с уровнем игрока и шкалой опыта, затем Фонарь, строители, армия
-    float x = safeX, y = 10;
+    const float top = 12;
+    // ── слева сверху: карточка игрока (уровень, имя, опыт, лига) ──
     {
-        float bw = 112;
+        float x = safeX, y = top;
+        ui::panel({x + 30, y + 4, 290, 60}, ui::Style::Dark);
+        atlas::drawRect(atlas::get("ui/badge"), x - 4, y - 4, 76, 76);
+        font::draw(std::to_string(S.level), x + 34, y + 15, 28, 0xffffffffu, font::Center);
+        std::string nm = online.ready() && !online.name().empty() ? online.name() : "Хранитель";
+        font::draw(nm, x + 82, y + 11, 18, 0xffffffffu);
         long long need = V::xpToNext(S.level);
-        ui::bar({x + 40, y + 16, bw - 18, 16}, (float)S.xp / need, rgba(110, 210, 255));
-        font::draw(fmtNum(S.xp) + "/" + fmtNum(need), x + 40 + (bw - 18) / 2, y + 15, 12, 0xffffffffu, font::Center);
-        atlas::drawRect(atlas::get("ui/badge"), x - 6, y - 6, 54, 54);
-        font::draw(std::to_string(S.level), x + 21, y + 6, 22, 0xffffffffu, font::Center);
-        x += bw + 34;
+        ui::bar({x + 82, y + 39, 130, 16}, (float)S.xp / need, rgba(110, 210, 255));
+        font::draw(fmtNum(S.xp) + " / " + fmtNum(need), x + 147, y + 38, 14, 0xffffffffu, font::Center);
+        const auto& lg = V::league(S.rating);
+        ui::icon("icon/star", x + 246, y + 34, 38, lg.color);
+        font::draw(std::to_string(S.rating), x + 268, y + 12, 19, 0xffffffffu);
+        font::draw(lg.name, x + 268, y + 36, 14, kMuted);
     }
-    auto chip = [&](const char* ic, const std::string& text, float w) {
-        ui::panel({x, y, w, 40}, ui::Style::Dark);
-        ui::icon(ic, x + 22, y + 20, 30);
-        font::draw(text, x + 42, y + 10, 17, 0xffffffffu);
-        x += w + 8;
-    };
-    chip("icon/lantern", std::to_string(V::lanternLevel(S)), 62);
-    auto bl = V::builders(S, tnow);
-    chip("icon/builder", std::to_string(bl.free) + "/" + std::to_string(bl.total), 74);
-    chip("icon/army", std::to_string(V::armyHousing(S)) + "/" + std::to_string(V::campCapacity(S)), 84);
-    // справа: ресурсы
+    // под ней — состояние: строители, армия, ночь
+    {
+        float x = safeX, y = top + 76;
+        auto chip = [&](const char* ic, const std::string& label, const std::string& value, uint32_t vc) {
+            float w = 46 + font::measure(label, 14) + 8 + font::measure(value, 18) + 16;
+            ui::panel({x, y, w, 42}, ui::Style::Dark);
+            ui::icon(ic, x + 23, y + 21, 30);
+            font::draw(label, x + 44, y + 13, 14, kMuted);
+            font::draw(value, x + 44 + font::measure(label, 14) + 8, y + 9, 18, vc);
+            x += w + 8;
+        };
+        auto bl = V::builders(S, tnow);
+        chip("icon/builder", "Строители", std::to_string(bl.free) + "/" + std::to_string(bl.total), bl.free > 0 ? kGold : kBad);
+        chip("icon/army", "Армия", std::to_string(V::armyHousing(S)) + "/" + std::to_string(V::campCapacity(S)), 0xffffffffu);
+    }
+    // ── справа сверху: ресурсы с лимитом хранилищ ──
     float rx = cam.w - safeX;
     auto shown = [&](lf::Res r) -> double& { return r == lf::Res::Ore ? shownOre : r == lf::Res::Aether ? shownAether : shownShards; };
-    auto resBar = [&](lf::Res r, uint32_t color) {
-        float w = 128;
+    auto resCapsule = [&](lf::Res r, uint32_t color) {
+        float w = 240;
         rx -= w;
         long long c = V::cap(S, r);
         double& sv = shown(r);
@@ -480,23 +519,25 @@ void App::drawVillageHud() {
         if (sv < 0) sv = (double)S.res(r);
         else if (!flying) sv += ((double)S.res(r) - sv) * 0.12;
         long long v = (long long)std::llround(sv);
-        ui::panel({rx, y, w, 40}, ui::Style::Dark);
-        ui::bar({rx + 10, y + 22, w - 46, 12}, c > 0 ? (float)v / c : 0, color);
-        font::draw(fmtNum(v), rx + w - 42, y + 2, 17, 0xffffffffu, font::Right);
-        ui::icon(resIcon(r), rx + w - 18, y + 20, 38);
-        resAnchor[(int)r] = {rx + w - 18, y + 20};
-        rx -= 8;
+        ui::panel({rx + 22, top, w - 22, 60}, ui::Style::Dark);
+        ui::icon(resIcon(r), rx + 26, top + 30, 54);
+        font::draw(fmtNum(v), rx + 60, top + 7, 21, v >= c ? kBad : 0xffffffffu);
+        font::draw("макс " + fmtNum(c), rx + w - 14, top + 11, 14, kMuted, font::Right);
+        ui::bar({rx + 60, top + 37, w - 76, 12}, c > 0 ? (float)v / c : 0, color);
+        resAnchor[(int)r] = {rx + 26, top + 30};
+        rx -= 10;
     };
     {
-        float w = 70;
+        float w = 124;
         rx -= w;
-        ui::panel({rx, y, w, 40}, ui::Style::Dark);
-        ui::icon("icon/shard", rx + 20, y + 20, 28);
-        font::draw(fmtNum(S.shards), rx + w - 12, y + 10, 17, kGold, font::Right);
-        rx -= 8;
+        ui::panel({rx + 18, top, w - 18, 60}, ui::Style::Dark);
+        ui::icon("icon/shard", rx + 22, top + 30, 44);
+        font::draw(fmtNum(S.shards), rx + w - 16, top + 17, 21, kGold, font::Right);
+        resAnchor[(int)lf::Res::Shards] = {rx + 22, top + 30};
+        rx -= 10;
     }
-    resBar(lf::Res::Aether, kAether);
-    resBar(lf::Res::Ore, kOre);
+    resCapsule(lf::Res::Aether, kAether);
+    resCapsule(lf::Res::Ore, kOre);
 
     if (placing.active && placing.moveId < 0) { drawPlacingPanel(); return; }
     if (selected >= 0 && V::get(S, selected) && modal == Modal::None) { drawSelectedPanel(); return; }
@@ -507,9 +548,6 @@ void App::drawVillageHud() {
         selectedOb = -1;
     }
 
-    // нижняя панель: большие «Поход» и «Строить» по краям, остальное — на деревянной полке
-    bool due = V::nightDue(S, tnow);
-    int ready = V::tasksReady(S);
     auto open = [&](Modal m) {
         modal = m;
         audio::play("open", 0.6f);
@@ -517,43 +555,43 @@ void App::drawVillageHud() {
         selectedOb = -1;
         resetArmed = false;
     };
-    {   // чат: круглая кнопка слева, со счётчиком непрочитанного
-        float cx = safeX + 30, cy = cam.h * 0.42f;
-        if (ui::roundButton(cx, cy, 24, "icon/chat", "Чат", ui::Style::Normal, true)) open(Modal::Chat);
-        if (online.unread > 0) {
-            atlas::drawRect(atlas::get("fx/dot"), cx + 10, cy - 30, 24, 24, rgba(30, 14, 20));
-            atlas::drawRect(atlas::get("fx/dot"), cx + 12, cy - 28, 20, 20, rgba(230, 60, 50));
-            font::draw(online.unread > 9 ? "9+" : std::to_string(online.unread), cx + 22, cy - 26, 12, 0xffffffffu, font::Center, false);
-        }
+    // ── ночь: плашка-таймер под состоянием (касание — окно ночи) ──
+    {
+        bool due = V::nightDue(S, tnow);
+        std::string text = due ? "Мгла у ворот!" : "Ночь через " + fmtTime((S.nightAt - tnow) / 1000.0);
+        float x = safeX, y = top + 126, w = 58 + font::measure(text, 17) + 18;
+        ui::Rect r{x, y, w, 44};
+        bool blink = due && std::fmod(t, 1.2f) < 0.8f;
+        if (blink) atlas::draw9(atlas::get("ui/glow_frame"), x - 6, y - 6, w + 12, 56, 30, 18, rgba(255, 120, 100, 230));
+        ui::panel(r, ui::Style::Dark);
+        ui::icon("icon/night", x + 26, y + 22, 32);
+        font::draw(text, x + 50, y + 11, 17, due ? kBad : 0xffffffffu);
+        if (ui::tapped(r)) open(Modal::Night);
     }
-    const float R = 38, cyB = cam.h - safeB - R - 14;
+    // ── левая колонка: общение и прогресс ──
+    {
+        float cx = safeX + 36, cy = 222;
+        int ready = V::tasksReady(S);
+        if (ui::roundButton(cx, cy, 28, "icon/chat", "Чат")) open(Modal::Chat);
+        ui::countBadge(cx + 22, cy - 22, online.unread);
+        cy += 78;
+        if (ui::roundButton(cx, cy, 28, "icon/star", "Задания")) open(Modal::Tasks);
+        ui::countBadge(cx + 22, cy - 22, ready);
+        cy += 78;
+        if (ui::roundButton(cx, cy, 28, "icon/codex", "Хроника")) open(Modal::Codex);
+    }
+    // ── правая колонка: настройки ──
+    if (ui::roundButton(cam.w - safeX - 36, 222, 28, "icon/menu", "Меню", ui::Style::Normal)) open(Modal::Menu);
+    // ── низ: главные действия ──
+    const float R = 46, cyB = cam.h - safeB - R - 20;
     float pulse = 1 + 0.03f * std::sin(t * 3);
-    gfx::pushScale(safeX + R + 6, cyB, pulse);
-    bool attack = ui::roundButton(safeX + R + 6, cyB, R, "icon/map", "Поход", ui::Style::Red, true);
+    gfx::pushScale(safeX + R + 8, cyB, pulse);
+    bool attack = ui::roundButton(safeX + R + 8, cyB, R, "icon/map", "В поход", ui::Style::Red, true);
     gfx::popScale();
     if (attack) open(Modal::Map);
-    if (ui::roundButton(cam.w - safeX - R - 6, cyB, R, "icon/build", "Строить", ui::Style::Gold, true)) open(Modal::Shop);
-    const float bw = 66, bh = 58, gap = 6;
-    const int n = 5;
-    float total = n * bw + (n - 1) * gap;
-    float bx = cam.w / 2 - total / 2, by = cam.h - bh - safeB - 4;
-    atlas::draw9(atlas::get("ui/shelf"), bx - 18, by + bh - 26, total + 36, 34, 50, 16);
-    struct B { const char* icon; std::string label; Modal m; ui::Style st; };
-    B btns[n] = {{"icon/army", "Армия", Modal::Army, ui::Style::Normal},
-                 {"icon/night", due ? "Мгла!" : fmtTime((S.nightAt - tnow) / 1000.0), Modal::Night, due ? ui::Style::Red : ui::Style::Dark},
-                 {"icon/star", "Задания", Modal::Tasks, ui::Style::Normal},
-                 {"icon/codex", "Хроника", Modal::Codex, ui::Style::Normal},
-                 {"icon/menu", "Меню", Modal::Menu, ui::Style::Dark}};
-    for (int i = 0; i < n; i++) {
-        bool hl = (i == 1 && due && std::fmod(t, 1.2f) < 0.8f) || (i == 2 && ready > 0 && std::fmod(t, 1.4f) < 0.9f);
-        ui::Rect r{bx + i * (bw + gap), by, bw, bh};
-        if (ui::iconButton(r, btns[i].icon, btns[i].label, btns[i].st, hl)) open(btns[i].m);
-        if (i == 2 && ready > 0) {  // значок «есть награда»
-            atlas::drawRect(atlas::get("fx/dot"), r.x + r.w - 20, r.y - 8, 26, 26, rgba(30, 14, 20));
-            atlas::drawRect(atlas::get("fx/dot"), r.x + r.w - 18, r.y - 6, 22, 22, rgba(230, 60, 50));
-            font::draw(std::to_string(ready), r.x + r.w - 7, r.y - 4, 14, 0xffffffffu, font::Center, false);
-        }
-    }
+    float bx = cam.w - safeX - R - 8;
+    if (ui::roundButton(bx, cyB, R, "icon/build", "Строить", ui::Style::Gold, true)) open(Modal::Shop);
+    if (ui::roundButton(bx - R - 58, cyB + 8, 38, "icon/army", "Армия", ui::Style::Normal, true)) open(Modal::Army);
 }
 
 void App::drawWorkshop() {
@@ -631,10 +669,10 @@ void App::drawTasks() {
         font::draw(d.title, body.x + 96, y + 6, 17, kInk, font::Left, false);
         char buf[160];
         std::snprintf(buf, sizeof buf, d.desc, fmtNum(goal).c_str());
-        font::draw(buf, body.x + 96, y + 28, 13, kInkSoft, font::Left, false);
+        font::draw(buf, body.x + 96, y + 30, 15, kInkSoft, font::Left, false);
         float bw2 = body.w - 96 - 220;
         ui::bar({body.x + 96, y + rh - 18, bw2, 12}, done ? 1.f : (float)std::min(prog, goal) / goal, ready || done ? rgba(110, 210, 80) : rgba(120, 200, 255));
-        font::draw(done ? "выполнено" : fmtNum(std::min(prog, goal)) + " / " + fmtNum(goal), body.x + 96 + bw2 + 8, y + rh - 22, 13, kInk, font::Left, false);
+        font::draw(done ? "выполнено" : fmtNum(std::min(prog, goal)) + " / " + fmtNum(goal), body.x + 96 + bw2 + 8, y + rh - 24, 15, kInk, font::Left, false);
         if (!done) {
             float rx = body.x + body.w - 120;
             if (ready) {
@@ -659,11 +697,20 @@ void App::drawTasks() {
     }
 }
 
+// Нижняя карточка выбранного объекта: миниатюра, имя, строка состояния и плитки действий справа.
 namespace {
-float vrand() {
-    static uint32_t seed = 777;
-    seed = seed * 1664525u + 1013904223u;
-    return (seed >> 8) / 16777216.f;
+struct Action { const char* icon; std::string label; ui::Style style; bool dim; std::string sub; std::string subIcon; uint32_t subColor; int id; };
+const float kTileW = 116, kTileH = 100, kTileGap = 10;
+
+// Рисует рамку карточки и возвращает прямоугольник для текста; плитки — справа.
+ui::Rect selectionCard(float camW, float camH, float safeB, size_t tiles, float* tilesX, float* tilesY) {
+    float infoW = 360, aw = tiles * kTileW + (tiles ? (tiles - 1) * kTileGap : 0);
+    float pw = std::min(camW - 40, infoW + aw + 36), ph = 128;
+    float px = camW / 2 - pw / 2, py = camH - safeB - ph - 6;
+    ui::panel({px, py, pw, ph}, ui::Style::Dark);
+    *tilesX = px + pw - 14 - aw;
+    *tilesY = py + 14;
+    return {px, py, pw - aw - 24, ph};
 }
 }  // namespace
 
@@ -671,13 +718,16 @@ void App::drawObstaclePanel() {
     const lf::Obstacle* ob = nullptr;
     for (const auto& o : S.obstacles) if (o.id == selectedOb) ob = &o;
     if (!ob) return;
-    float by = cam.h - safeB - 50;
-    font::draw(V::obstacleName(ob->kind), cam.w / 2, by - 68, 22, kGold, font::Center);
+    float tx, ty;
+    ui::Rect c = selectionCard(cam.w, cam.h, safeB, 1, &tx, &ty);
+    font::draw(V::obstacleName(ob->kind), c.x + 22, c.y + 18, 22, kGold);
     int shards = V::obstacleShards(*ob);
-    font::draw(shards > 0 ? "Расчисти место — найдёшь " + std::to_string(shards) + " оск." : "Расчисти место для построек", cam.w / 2, by - 40, 15,
-               0xffffffffu, font::Center);
+    std::string hint = shards > 0 ? "Расчисти — под ним " + std::to_string(shards) + " оск." : "Расчисти место под постройки";
+    float ly = c.y + 54;
+    for (const auto& l : font::wrap(hint, 16, c.w - 30)) { font::draw(l, c.x + 22, ly, 16, 0xffffffffu); ly += font::lineHeight(16); }
     int cost = V::obstacleCost(ob->kind);
-    if (ui::roundButton(cam.w / 2, by, 32, "icon/ore", fmtNum(cost), S.ore >= cost ? ui::Style::Gold : ui::Style::Normal, true)) {
+    bool can = S.ore >= cost;
+    if (ui::tile({tx, ty, kTileW, kTileH}, "icon/builder", "Расчистить", ui::Style::Gold, !can, fmtNum(cost), "icon/ore", can ? 0xffffffffu : kBad)) {
         int s = V::obstacleSize(ob->kind);
         float cx = ob->x + s / 2.f, cy = ob->y + s / 2.f;
         int got = 0;
@@ -706,58 +756,70 @@ void App::drawSelectedPanel() {
     const auto& d = b->def();
     auto up = V::upgradeInfo(S, b->id, tnow);
     bool busy = b->busyUntil > tnow;
-    float by = cam.h - safeB - 50;
-    // заголовок над кнопками
-    std::string title = std::string(d.name) + (b->level ? "  (ур. " + std::to_string(b->level) + ")" : "  (строится)");
-    font::draw(title, cam.w / 2, by - 68, 22, kGold, font::Center);
-    if (busy) font::draw("Готово через " + fmtTime((b->busyUntil - tnow) / 1000.0), cam.w / 2, by - 38, 15, 0xffffffffu, font::Center);
-    struct Btn { const char* icon; std::string label; ui::Style style; bool enabled; int action; lf::Res res; int cost; };
-    std::vector<Btn> btns;
-    btns.push_back({"icon/codex", "Инфо", ui::Style::Normal, true, 0, lf::Res::None, 0});
-    if (busy) btns.push_back({"icon/shard", std::to_string(V::speedUpCost(*b, tnow)), ui::Style::Gold, S.shards >= V::speedUpCost(*b, tnow), 2, lf::Res::None, 0});
-    else if (!up.max) btns.push_back({"icon/upgrade", up.cost ? fmtNum(up.cost) : "Улучшить", up.ok ? ui::Style::Gold : ui::Style::Normal, true, 1, up.res, up.cost});
+    int lv = std::max(1, b->level);
+    std::vector<Action> acts;
+    acts.push_back({"icon/info", "Сведения", ui::Style::Normal, false, "", "", 0, 0});
     double amount = d.produces != lf::Res::None && b->level >= 1 ? V::collectorAmount(*b, tnow) : 0;
     if (d.produces != lf::Res::None && b->level >= 1 && !busy)
-        btns.push_back({d.produces == lf::Res::Ore ? "icon/ore" : "icon/aether", fmtNum((long long)amount), ui::Style::Green, amount >= 1, 3, lf::Res::None, 0});
-    if (b->type == lf::BType::Barracks || b->type == lf::BType::Camp) btns.push_back({"icon/army", "Армия", ui::Style::Normal, true, 4, lf::Res::None, 0});
-    if (b->type == lf::BType::Workshop && b->level >= 1) btns.push_back({"icon/builder", "Усилить", ui::Style::Gold, true, 5, lf::Res::None, 0});
-    float gap = 86, x0 = cam.w / 2 - (btns.size() - 1) * gap / 2;
-    for (size_t i = 0; i < btns.size(); i++) {
-        const auto& bt = btns[i];
-        float cx = x0 + i * gap;
-        if (ui::roundButton(cx, by, 32, bt.icon, bt.label, bt.style, bt.enabled)) {
-            switch (bt.action) {
-                case 0: modal = Modal::Info; break;
-                case 1: {
-                    auto r = V::startUpgrade(S, b->id, tnow);
-                    if (!r.ok) toast(r.reason, kBad);
-                    else { audio::play("upgrade"); toast("Строители взялись за работу", kGold); save(); }
-                    break;
-                }
-                case 2: {
-                    auto r = V::speedUp(S, b->id, tnow);
-                    if (!r.ok) toast(r.reason, kBad); else { audio::play("done"); toast("Готово!", kGold); save(); }
-                    break;
-                }
-                case 3: {
-                    long long got = V::collect(S, b->id, tnow);
-                    if (got > 0) {
-                        audio::play(d.produces == lf::Res::Ore ? "collect_ore" : "collect_aether");
-                        float s = (float)d.size;
-                        spawnFlyers(d.produces, cam.toScreen(b->x + s / 2, b->y + s / 2, 60), got);
-                    } else toast("Хранилища полны", kBad);
-                    break;
-                }
-                case 4: modal = Modal::Army; selected = -1; break;
-                case 5: modal = Modal::Workshop; selected = -1; break;
+        acts.push_back({resIcon(d.produces), "Собрать", ui::Style::Green, amount < 1, fmtNum((long long)amount), "", 0xffffffffu, 3});
+    if (b->type == lf::BType::Barracks || b->type == lf::BType::Camp) acts.push_back({"icon/army", "Обучить", ui::Style::Normal, false, "", "", 0, 4});
+    if (b->type == lf::BType::Workshop && b->level >= 1) acts.push_back({"icon/builder", "Усилить", ui::Style::Normal, false, "", "", 0, 5});
+    if (busy) {
+        int sc = V::speedUpCost(*b, tnow);
+        acts.push_back({"icon/clock", "Ускорить", ui::Style::Gold, S.shards < sc, std::to_string(sc), "icon/shard", S.shards >= sc ? 0xffffffffu : kBad, 2});
+    } else if (up.max) {
+        acts.push_back({"icon/star", "Максимум", ui::Style::Dark, true, "", "", 0, -1});
+    } else {
+        bool afford = S.res(up.res) >= up.cost;
+        acts.push_back({"icon/upgrade", "Улучшить", ui::Style::Gold, !up.ok, up.cost > 0 ? fmtNum(up.cost) : "", up.cost > 0 ? resIcon(up.res) : "",
+                        afford ? 0xffffffffu : kBad, 1});
+    }
+    float tx, ty;
+    ui::Rect c = selectionCard(cam.w, cam.h, safeB, acts.size(), &tx, &ty);
+    world::drawBuildingThumb(b->type, c.x + 66, c.y + c.h / 2, 108, 108, lv);
+    float ix = c.x + 130, iw = c.w - 140;
+    font::draw(d.name, ix, c.y + 14, 22, kGold);
+    font::draw(b->level ? "Уровень " + std::to_string(b->level) + " из " + std::to_string(d.maxLevel) : "Строится", ix, c.y + 44, 16, kMuted);
+    // строка состояния: что происходит сейчас, либо почему нельзя улучшить
+    std::string status;
+    uint32_t sc = 0xffffffffu;
+    if (busy) status = (b->level ? "Улучшение · осталось " : "Стройка · осталось ") + fmtTime((b->busyUntil - tnow) / 1000.0);
+    else if (!up.ok && !up.max) { status = up.reason; sc = kBad; }
+    else if (d.produces != lf::Res::None) status = "Добыча " + std::to_string(d.lv(d.rate, lv)) + " в минуту · запас " + fmtNum(d.lv(d.cap, lv));
+    else if (!d.storage.empty()) status = "Хранит до " + fmtNum(d.lv(d.storage, lv));
+    else if (!up.max) status = "Улучшение: " + fmtTime(up.time);
+    float ly = c.y + 72;
+    for (const auto& l : font::wrap(status, 15, iw)) { font::draw(l, ix, ly, 15, sc); ly += font::lineHeight(15); }
+    for (size_t i = 0; i < acts.size(); i++) {
+        const auto& a = acts[i];
+        if (!ui::tile({tx + i * (kTileW + kTileGap), ty, kTileW, kTileH}, a.icon, a.label, a.style, a.dim, a.sub, a.subIcon, a.subColor)) continue;
+        switch (a.id) {
+            case 0: modal = Modal::Info; break;
+            case 1: {
+                auto r = V::startUpgrade(S, b->id, tnow);
+                if (!r.ok) toast(r.reason, kBad);
+                else { audio::play("upgrade"); toast("Строители взялись за работу", kGold); save(); }
+                break;
             }
-        }
-        if (bt.res != lf::Res::None && bt.cost > 0) {
-            float w = font::measure(bt.label, 14);
-            ui::icon(bt.res == lf::Res::Ore ? "icon/ore" : "icon/aether", cx - w / 2 - 11, by + 32 + 8, 18);
+            case 2: {
+                auto r = V::speedUp(S, b->id, tnow);
+                if (!r.ok) toast(r.reason, kBad); else { audio::play("done"); toast("Готово!", kGold); save(); }
+                break;
+            }
+            case 3: {
+                long long got = V::collect(S, b->id, tnow);
+                if (got > 0) {
+                    audio::play(d.produces == lf::Res::Ore ? "collect_ore" : "collect_aether");
+                    float s = (float)d.size;
+                    spawnFlyers(d.produces, cam.toScreen(b->x + s / 2, b->y + s / 2, 60), got);
+                } else toast(amount < 1 ? "Пока нечего собирать" : "Хранилища полны", kBad);
+                break;
+            }
+            case 4: modal = Modal::Army; selected = -1; break;
+            case 5: modal = Modal::Workshop; selected = -1; break;
+            default: break;
         }
     }
-    if (!up.ok && !up.max && !busy) font::draw(up.reason, cam.w / 2, by - 40, 15, kBad, font::Center);
 }
 
 void App::drawInfo() {
@@ -822,107 +884,153 @@ bool App::modalFrame(const char* title, float w, float h, ui::Rect& body) {
 
 void App::drawShop() {
     ui::Rect body;
-    if (!modalFrame("Строительство", 780, 380, body)) return;
+    if (!modalFrame("Строительство", 920, 440, body)) return;
     float tx = body.x;
     for (int i = 0; i < 4; i++) {
-        float w = font::measure(kShopTabNames[i], 16) + 28;
-        if (ui::button({tx, body.y, w, 34}, kShopTabNames[i], shopTab == i ? ui::Style::Gold : ui::Style::Dark, true, 16)) shopTab = i;
-        tx += w + 6;
+        float w = font::measure(kShopTabNames[i], 17) + 36;
+        if (ui::button({tx, body.y, w, 44}, kShopTabNames[i], shopTab == i ? ui::Style::Gold : ui::Style::Dark, true, 17)) shopTab = i;
+        tx += w + 8;
     }
     int LL = V::lanternLevel(S);
-    float cw = 140, ch = body.h - 50, cx = body.x, cy = body.y + 46;
+    const float gap = 10;
+    float cw = (body.w - 4 * gap) / 5, ch = body.h - 58, cx = body.x, cy = body.y + 58;
     for (int i = 0; i < 6; i++) {
         lf::BType type = kShopTabs[shopTab][i];
         if (type == lf::BType::Count) break;
         const auto& d = lf::B(type);
         auto can = V::canBuild(S, type, now());
         auto cost = V::buildCost(S, type);
+        int have = V::countOf(S, type), lim = lf::limit(type, LL);
+        bool afford = S.res(cost.first) >= cost.second;
         ui::Rect r{cx, cy, cw, ch};
-        atlas::draw9(atlas::get(can.ok ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 40, 12);
-        world::drawBuildingThumb(type, cx + cw / 2, cy + ch * 0.36f, cw - 8, ch * 0.62f);
-        font::draw(d.name, cx + cw / 2, cy + ch * 0.68f, 16, kInk, font::Center, false);
-        font::draw(std::to_string(V::countOf(S, type)) + "/" + std::to_string(lf::limit(type, LL)) + (d.time[0] ? " · " + fmtTime(d.time[0]) : ""),
-                   cx + cw / 2, cy + ch * 0.68f + 20, 12, kInkSoft, font::Center, false);
-        costLabel(cost.first, cost.second, cx + cw / 2, cy + ch - 28, 16, S.res(cost.first) >= cost.second ? kInk : rgba(200, 50, 40), 1);
-        if (!can.ok) font::draw(can.reason, cx + cw / 2, cy + 8, 11, rgba(180, 40, 30), font::Center, false);
+        atlas::draw9(atlas::get("ui/card"), cx, cy, cw, ch, 40, 12);
+        world::drawBuildingThumb(type, cx + cw / 2, cy + ch * 0.3f, cw - 16, ch * 0.5f);
+        font::draw(d.name, cx + cw / 2, cy + ch * 0.57f, 17, kInk, font::Center, false);
+        if (lim > 0) font::draw("Построено " + std::to_string(have) + " из " + std::to_string(lim), cx + cw / 2, cy + ch * 0.57f + 26, 14, kInkSoft, font::Center, false);
+        else font::draw("Ещё не открыто", cx + cw / 2, cy + ch * 0.57f + 26, 14, kInkSoft, font::Center, false);
+        if (d.time[0]) {
+            std::string tt = fmtTime(d.time[0]);
+            float w = 22 + font::measure(tt, 14);
+            ui::icon("icon/clock", cx + cw / 2 - w / 2 + 9, cy + ch * 0.57f + 56, 18);
+            font::draw(tt, cx + cw / 2 - w / 2 + 22, cy + ch * 0.57f + 47, 14, kInkSoft, font::Left, false);
+        }
+        // цена — на «пилюле» внизу карточки
+        ui::Rect pill{cx + 12, cy + ch - 48, cw - 24, 38};
+        atlas::draw9(atlas::get(can.ok ? "ui/btn_green" : "ui/btn_dark"), pill.x, pill.y, pill.w, pill.h, 56, 18);
+        costLabel(cost.first, cost.second, pill.x + pill.w / 2, pill.y + 9, 18, afford ? 0xffffffffu : kBad, 1);
+        if (!can.ok && (have >= lim || lim == 0)) ui::lockOverlay({cx, cy, cw, ch - 56}, can.reason);
         if (ui::tapped(r)) {
             if (!can.ok) toast(can.reason, kBad);
             else { modal = Modal::None; startPlacing(type); }
         }
-        cx += cw + 8;
+        cx += cw + gap;
     }
 }
 
 void App::drawArmy() {
     ui::Rect body;
-    if (!modalFrame("Армия", 800, 380, body)) return;
+    if (!modalFrame("Армия", 1000, 470, body)) return;
     long long tnow = now();
     V::tick(S, tnow);
     int cap = V::campCapacity(S), have = V::armyHousing(S), q = V::queueHousing(S);
-    font::draw("Лагеря: " + std::to_string(have) + " + " + std::to_string(q) + " в обучении / " + std::to_string(cap), body.x, body.y, 16, kInk, font::Left, false);
-    ui::bar({body.x + 330, body.y + 4, body.w - 330 - 180, 14}, cap ? (float)(have + q) / cap : 0, kGold);
-    // заклинания: открываются уровнем игрока
+    // строка 1: места в лагерях и заклинания
+    ui::icon("icon/person", body.x + 16, body.y + 16, 30);
+    font::draw("Места в лагерях", body.x + 38, body.y + 4, 17, kInk, font::Left, false);
+    ui::Rect bar{body.x + 200, body.y + 6, 260, 22};
+    ui::bar(bar, cap ? (float)(have + q) / cap : 0, kGold);
+    font::draw(std::to_string(have) + (q ? " + " + std::to_string(q) : "") + " / " + std::to_string(cap), bar.x + bar.w / 2, bar.y + 1, 16, 0xffffffffu, font::Center);
     auto spells = V::spellCharges(S.level);
-    float sx = body.x + body.w - 170;
+    float sx = body.x + body.w - 300;
+    font::draw("Заклинания", sx, body.y + 4, 17, kInk, font::Left, false);
+    sx += 110;
     for (lf::Spell sp : {lf::Spell::Heal, lf::Spell::Rage}) {
         bool open = spells.count(sp) > 0;
-        ui::icon(sp == lf::Spell::Heal ? "icon/heal" : "icon/rage", sx + 14, body.y + 10, 28, open ? 0xffffffffu : rgba(120, 110, 130, 200));
-        font::draw(open ? "x" + std::to_string(spells[sp]) : "ур. " + std::to_string(V::spellUnlockLevel(sp)), sx + 32, body.y + 2, 14,
+        ui::icon(sp == lf::Spell::Heal ? "icon/heal" : "icon/rage", sx + 16, body.y + 16, 32, open ? 0xffffffffu : rgba(120, 110, 130, 200));
+        font::draw(open ? "×" + std::to_string(spells[sp]) : "ур. " + std::to_string(V::spellUnlockLevel(sp)), sx + 36, body.y + 5, 15,
                    open ? kInk : kInkSoft, font::Left, false);
-        sx += 86;
+        sx += 95;
     }
-    // очередь
-    float qx = body.x, qy = body.y + 28;
-    if (S.trainQueue.empty()) font::draw("Очередь пуста — нажми на отряд, чтобы обучить", qx, qy + 6, 14, kInkSoft, font::Left, false);
-    for (size_t i = 0; i < S.trainQueue.size() && i < 14; i++) {
-        ui::Rect r{qx, qy, 46, 40};
-        atlas::draw9(atlas::get("ui/card"), qx, qy, 46, 40, 40, 10);
-        world::drawTroopThumb(S.trainQueue[i].type, qx + 23, qy + 20, 34);
-        if (i == 0) font::draw(fmtTime(S.trainQueue[0].left / std::max(1, V::barracksCount(S))), qx + 23, qy + 26, 11, kInk, font::Center, false);
+    // строка 2: очередь обучения
+    float qy = body.y + 44;
+    atlas::draw9(atlas::get("ui/card_dark"), body.x, qy, body.w, 64, 40, 12);
+    font::draw("Обучение", body.x + 16, qy + 21, 16, kInk, font::Left, false);
+    float qx = body.x + 110;
+    if (S.trainQueue.empty()) font::draw("Нажми на отряд ниже, чтобы обучить его", qx, qy + 22, 15, kInkSoft, font::Left, false);
+    for (size_t i = 0; i < S.trainQueue.size() && qx + 56 < body.x + body.w; i++) {
+        ui::Rect r{qx, qy + 6, 52, 52};
+        atlas::draw9(atlas::get("ui/card"), r.x, r.y, r.w, r.h, 40, 10);
+        world::drawTroopThumb(S.trainQueue[i].type, r.x + 26, r.y + 26, 44);
+        if (i == 0) {
+            float total = (float)std::max(1, lf::T(S.trainQueue[0].type).time);
+            ui::bar({r.x + 4, r.y + r.h - 10, r.w - 8, 6}, 1 - S.trainQueue[0].left / total, kGold);
+            font::draw(fmtTime(S.trainQueue[0].left / std::max(1, V::barracksCount(S))), r.x + r.w + 6, qy + 22, 15, kInk, font::Left, false);
+            qx += 60;
+        }
         if (ui::tapped(r)) V::cancelTrain(S, (int)i);
-        qx += 50;
+        qx += 58;
     }
     // карточки: герой и отряды
-    float cw = (body.w - 6 * 8) / 7, ch = body.h - 80, cx = body.x, cy = body.y + 76;
+    const float gap = 10;
+    float cw = (body.w - 6 * gap) / 7, cy = qy + 76, ch = body.y + body.h - cy, cx = body.x;
+    auto stat = [&](const char* ic, const std::string& v, float x, float y) {
+        ui::icon(ic, x + 8, y + 9, 16);
+        font::draw(v, x + 18, y, 14, kInk, font::Left, false);
+        return 18 + font::measure(v, 14) + 5;
+    };
     {
         bool open = V::heroUnlocked(S);
         int maxL = V::heroMaxLevel(S);
         ui::Rect r{cx, cy, cw, ch};
-        atlas::draw9(atlas::get(open ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 40, 12, open ? rgba(255, 236, 190) : 0xffffffffu);
-        world::drawTroopThumb(lf::TroopType::Hero, cx + cw / 2, cy + ch * 0.32f, ch * 0.55f);
-        font::draw("Фонарщик", cx + cw / 2, cy + ch * 0.58f, 15, kInk, font::Center, false);
-        font::draw(open ? "Герой · ур. " + std::to_string(S.heroLevel) : "Герой", cx + cw / 2, cy + ch * 0.58f + 20, 11, kInkSoft, font::Center, false);
-        if (!open) font::draw("Фонарь ур. " + std::to_string(lf::kHeroUnlockLantern), cx + cw / 2, cy + ch - 26, 13, rgba(180, 40, 30), font::Center, false);
-        else if (S.heroLevel >= maxL) font::draw(S.heroLevel >= lf::kHeroMaxLevel ? "Максимум" : "Улучши Фонарь", cx + cw / 2, cy + ch - 26, 13, kInkSoft, font::Center, false);
-        else {
+        atlas::draw9(atlas::get("ui/card"), cx, cy, cw, ch, 40, 12, rgba(255, 236, 190));
+        world::drawTroopThumb(lf::TroopType::Hero, cx + cw / 2, cy + ch * 0.3f, ch * 0.48f);
+        font::draw("Фонарщик", cx + cw / 2, cy + ch * 0.56f, 16, kInk, font::Center, false);
+        font::draw(open ? "Герой · ур. " + std::to_string(S.heroLevel) : "Герой", cx + cw / 2, cy + ch * 0.56f + 24, 14, kInkSoft, font::Center, false);
+        if (open && S.heroLevel < maxL) {
             int cost = V::heroUpgradeCost(S.heroLevel + 1);
-            costLabel(lf::Res::Aether, cost, cx + cw / 2, cy + ch - 26, 15, S.aether >= cost ? kInk : rgba(200, 50, 40), 1);
-        }
+            ui::Rect pill{cx + 10, cy + ch - 46, cw - 20, 36};
+            atlas::draw9(atlas::get("ui/btn_gold"), pill.x, pill.y, pill.w, pill.h, 56, 18);
+            costLabel(lf::Res::Aether, cost, pill.x + pill.w / 2, pill.y + 8, 17, S.aether >= cost ? 0xffffffffu : kBad, 1);
+        } else if (open) font::draw(S.heroLevel >= lf::kHeroMaxLevel ? "Максимум" : "Улучши Фонарь", cx + cw / 2, cy + ch - 36, 14, kInkSoft, font::Center, false);
+        if (!open) ui::lockOverlay(r, "Фонарь ур. " + std::to_string(lf::kHeroUnlockLantern));
         if (ui::tapped(r)) {
             auto res = V::upgradeHero(S);
             if (res.ok) { toast("Фонарщик: уровень " + std::to_string(S.heroLevel) + "!", kGold); audio::play("upgrade", 0.9f); save(); }
             else toast(res.reason, kBad);
         }
-        cx += cw + 8;
+        cx += cw + gap;
     }
     for (int i = 0; i < lf::kPlayerTroops; i++) {
         auto type = (lf::TroopType)i;
         const auto& d = lf::T(type);
-        auto can = V::canTrain(S, type);
         bool unlocked = V::barracksLevel(S) >= d.unlock;
         ui::Rect r{cx, cy, cw, ch};
-        atlas::draw9(atlas::get(unlocked ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 40, 12);
-        world::drawTroopThumb(type, cx + cw / 2, cy + ch * 0.32f, ch * 0.5f);
-        font::draw(d.name, cx + cw / 2, cy + ch * 0.58f, 15, kInk, font::Center, false);
-        font::draw("x" + std::to_string(S.army[i]), cx + 10, cy + 8, 17, rgba(255, 255, 255));
-        font::draw("HP " + std::to_string((int)d.hp) + " · место " + std::to_string(d.housing), cx + cw / 2, cy + ch * 0.58f + 20, 11, kInkSoft, font::Center, false);
-        if (unlocked) costLabel(lf::Res::Aether, d.cost, cx + cw / 2, cy + ch - 26, 15, S.aether >= d.cost ? kInk : rgba(200, 50, 40), 1);
-        else font::draw("Казарма ур. " + std::to_string(d.unlock), cx + cw / 2, cy + ch - 26, 13, rgba(180, 40, 30), font::Center, false);
+        atlas::draw9(atlas::get("ui/card"), cx, cy, cw, ch, 40, 12);
+        world::drawTroopThumb(type, cx + cw / 2, cy + ch * 0.3f, ch * 0.44f);
+        font::draw(d.name, cx + cw / 2, cy + ch * 0.56f, 16, kInk, font::Center, false);
+        // характеристики значками: здоровье, урон, места
+        std::string hp = std::to_string((int)d.hp), dm = std::to_string((int)std::lround(d.dmg)), hs = std::to_string(d.housing);
+        float sw = 3 * 23 + font::measure(hp, 14) + font::measure(dm, 14) + font::measure(hs, 14) - 5;
+        float sxx = cx + cw / 2 - sw / 2, syy = cy + ch * 0.56f + 26;
+        sxx += stat("icon/heart", hp, sxx, syy);
+        sxx += stat("icon/sword", dm, sxx, syy);
+        stat("icon/person", hs, sxx, syy);
+        if (S.army[i] > 0) {
+            std::string n = "×" + std::to_string(S.army[i]);
+            float w = font::measure(n, 16) + 18;
+            atlas::draw9(atlas::get("ui/btn_gold"), cx + 6, cy + 6, w, 28, 56, 12);
+            font::draw(n, cx + 6 + w / 2, cy + 9, 16, 0xffffffffu, font::Center);
+        }
+        if (unlocked) {
+            ui::Rect pill{cx + 10, cy + ch - 46, cw - 20, 36};
+            atlas::draw9(atlas::get("ui/btn_green"), pill.x, pill.y, pill.w, pill.h, 56, 18);
+            costLabel(lf::Res::Aether, d.cost, pill.x + pill.w / 2, pill.y + 8, 17, S.aether >= d.cost ? 0xffffffffu : kBad, 1);
+        } else ui::lockOverlay(r, "Казарма ур. " + std::to_string(d.unlock));
         if (ui::tapped(r)) {
             auto res = V::train(S, type, tnow);
             if (!res.ok) toast(res.reason, kBad);
+            else audio::play("click", 0.5f, 1.2f);
         }
-        cx += cw + 8;
+        cx += cw + gap;
     }
 }
 
@@ -947,10 +1055,13 @@ void App::drawMap() {
             int stars = S.campaign.count(ms[i].id) ? S.campaign[ms[i].id] : 0;
             ui::Rect r{cx, cy, cw, ch};
             atlas::draw9(atlas::get(open ? "ui/card" : "ui/card_dark"), cx, cy, cw, ch, 40, 12);
-            font::draw(std::to_string(i + 1) + ". " + ms[i].title, cx + 10, cy + 8, 14, kInk, font::Left, false);
-            font::draw("Фонарь врага " + std::to_string(ms[i].LL), cx + 10, cy + 30, 12, kInkSoft, font::Left, false);
-            for (int s = 0; s < 3; s++) ui::icon(s < stars ? "icon/star" : "icon/star_off", cx + cw - 64 + s * 20, cy + ch - 18, 20);
-            if (!open) font::draw("закрыто", cx + 10, cy + ch - 26, 12, kInkSoft, font::Left, false);
+            font::draw(std::to_string(i + 1) + ". " + ms[i].title, cx + 12, cy + 10, 16, open ? kInk : kInkSoft, font::Left, false);
+            font::draw("Фонарь врага ур. " + std::to_string(ms[i].LL), cx + 12, cy + 36, 14, kInkSoft, font::Left, false);
+            if (open) for (int s = 0; s < 3; s++) ui::icon(s < stars ? "icon/star" : "icon/star_off", cx + cw - 70 + s * 24, cy + ch - 20, 24);
+            else {
+                ui::icon("icon/lock", cx + cw - 24, cy + ch - 24, 28);
+                font::draw("Сначала поход " + std::to_string(i), cx + 12, cy + ch - 30, 14, kInkSoft, font::Left, false);
+            }
             if (ui::tapped(r) && open) {
                 if (V::armyHousing(S) == 0) { toast("Армия пуста — обучи войска", kBad); continue; }
                 modal = Modal::None;
@@ -1018,14 +1129,14 @@ void App::drawCodex() {
     codexPage = std::clamp(codexPage, 0, pages - 1);
     float y = body.y;
     for (int i = codexPage * perPage; i < std::min((int)entries.size(), (codexPage + 1) * perPage); i++) {
-        font::draw(entries[i]->title, body.x + 4, y, 19, rgba(150, 80, 30), font::Left, false);
-        y += 24;
-        for (const auto& l : font::wrap(entries[i]->text, 15, body.w - 10)) { font::draw(l, body.x + 4, y, 15, kInk, font::Left, false); y += font::lineHeight(15); }
+        font::draw(entries[i]->title, body.x + 4, y, 21, rgba(150, 80, 30), font::Left, false);
+        y += 30;
+        for (const auto& l : font::wrap(entries[i]->text, 17, body.w - 10)) { font::draw(l, body.x + 4, y, 17, kInk, font::Left, false); y += font::lineHeight(17); }
         y += 10;
     }
     int locked = (int)cx.size() - (int)entries.size();
     float by = body.y + body.h - 40;
-    if (locked > 0) font::draw("Ещё " + std::to_string(locked) + " записей скрыто во Мгле", body.x + 130, by + 10, 13, kInkSoft, font::Left, false);
+    if (locked > 0) font::draw("Ещё " + std::to_string(locked) + " записей скрыто во Мгле — их открывают походы", body.x + 140, by + 10, 15, kInkSoft, font::Left, false);
     if (pages > 1) {
         if (ui::button({body.x + body.w - 200, by, 44, 38}, "<", ui::Style::Dark, codexPage > 0)) codexPage--;
         font::draw(std::to_string(codexPage + 1) + "/" + std::to_string(pages), body.x + body.w - 128, by + 9, 16, kInk, font::Center, false);
@@ -1036,16 +1147,40 @@ void App::drawCodex() {
 
 void App::drawMenu() {
     ui::Rect body;
-    if (!modalFrame("Меню", 560, 330, body)) return;
+    if (!modalFrame("Настройки", 700, 400, body)) return;
     float y = body.y;
-    font::draw("Атак: " + std::to_string(S.stats.attacks) + ", побед: " + std::to_string(S.stats.wins), body.x + 4, y, 16, kInk, font::Left, false);
-    font::draw("Ночей пережито: " + std::to_string(S.stats.nightsWon) + ", проиграно: " + std::to_string(S.stats.nightsLost), body.x + 4, y + 24, 16, kInk, font::Left, false);
-    font::draw("Lanternfall 0.3 · свой движок на C++", body.x + 4, y + 52, 13, kInkSoft, font::Left, false);
-    if (ui::button({body.x + body.w - 170, y, 170, 44}, audio::muted() ? "Звук: выкл" : "Звук: вкл", audio::muted() ? ui::Style::Dark : ui::Style::Green, true, 16)) {
+    auto row = [&](const std::string& name, const std::string& value) {
+        atlas::draw9(atlas::get("ui/card"), body.x, y, body.w, 56, 40, 12);
+        font::draw(name, body.x + 18, y + 16, 18, kInk, font::Left, false);
+        if (!value.empty()) font::draw(value, body.x + body.w - 18, y + 17, 16, kInkSoft, font::Right, false);
+    };
+    row("Звук и музыка", "");
+    if (ui::button({body.x + body.w - 150, y + 8, 136, 40}, audio::muted() ? "Выключены" : "Включены", audio::muted() ? ui::Style::Dark : ui::Style::Green,
+                   true, 16)) {
         audio::setMuted(!audio::muted());
         platform::writeFile(platform::saveDir() + "/settings.txt", audio::muted() ? "mute 1\n" : "mute 0\n");
     }
-    if (ui::button({body.x, body.y + body.h - 112, body.w, 50}, "Режим разработчика: ресурсы и стройка", ui::Style::Normal, true, 16)) {
+    y += 66;
+    row("Аккаунт", online.ready() ? online.name() + " · ID " + std::to_string(online.playerId()) : online.enabled() ? "подключение…" : "игра без сервера");
+    y += 76;
+    // статистика плитками
+    font::draw("Летопись", body.x + 4, y, 18, kInk, font::Left, false);
+    y += 30;
+    struct St { const char* name; int v; } st[4] = {{"Набегов", S.stats.attacks}, {"Побед", S.stats.wins}, {"Ночей выстояли", S.stats.nightsWon},
+                                                   {"Ночей пали", S.stats.nightsLost}};
+    float sw = (body.w - 3 * 10) / 4;
+    for (int i = 0; i < 4; i++) {
+        float sx = body.x + i * (sw + 10);
+        atlas::draw9(atlas::get("ui/card_dark"), sx, y, sw, 76, 40, 12);
+        font::draw(std::to_string(st[i].v), sx + sw / 2, y + 10, 26, kInk, font::Center, false);
+        font::draw(st[i].name, sx + sw / 2, y + 46, 14, kInkSoft, font::Center, false);
+    }
+    // низ: версия (5 касаний — режим разработчика) и сброс
+    float by = body.y + body.h - 46;
+    ui::Rect ver{body.x, by + 8, 200, 32};
+    font::draw("Lanternfall 0.4", ver.x + 4, ver.y + 6, 14, kInkSoft, font::Left, false);
+    if (ui::tapped(ver)) devTaps++;
+    if (devTaps >= 5 && ui::button({body.x + 170, by, 190, 44}, "Казна (тест)", ui::Style::Normal, true, 15)) {
         V::addRes(S, lf::Res::Ore, 1000000000);
         V::addRes(S, lf::Res::Aether, 1000000000);
         S.shards += 500;
@@ -1054,7 +1189,8 @@ void App::drawMenu() {
         save();
         toast("Казна полна", kGold);
     }
-    if (ui::button({body.x, body.y + body.h - 54, body.w, 50}, resetArmed ? "Точно стереть весь прогресс?" : "Начать заново", ui::Style::Red, true, 16)) {
+    float rw = resetArmed ? 300 : 200;
+    if (ui::button({body.x + body.w - rw, by, rw, 44}, resetArmed ? "Стереть прогресс навсегда?" : "Начать заново", ui::Style::Red, true, 15)) {
         if (!resetArmed) resetArmed = true;
         else {
             S = V::create(now());

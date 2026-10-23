@@ -42,6 +42,7 @@ struct BuildingLook {
     float collapse = -1;           // 0..1 — идёт обрушение разрушенной постройки
     float angle = 0.785f;          // куда смотрит поворотная часть (мировой угол), по умолчанию — к зрителю
     float stunned = 0;             // > 0 — ослеплена Вспышкой
+    float pop = -1;                // 0..1 — «пружина» (выбор, установка, завершение стройки)
 };
 void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level, const BuildingLook& look, float t);
 void drawFootprint(const Camera& cam, float x, float y, float size, uint32_t color);

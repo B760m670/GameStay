@@ -219,14 +219,20 @@ bool App::drawDialogue() {
 
 void App::frame(float dt, float width, float height) {
     t += dt;
+    // Единое виртуальное разрешение: высота экрана всегда kVirtualH единиц, ширина — по пропорциям устройства.
+    // Вёрстка одна для ПК и телефона (844×390 точек): на телефоне всё масштабируется, а не наползает.
+    const float k = kVirtualH / height;
+    width *= k;
+    height = kVirtualH;
     cam.w = width;
     cam.h = height;
     // запас под вырез и «чёлку» на широких айфонах
-    safeX = width / height > 1.9f ? 46.f : 14.f;
-    safeB = width / height > 1.9f ? 14.f : 8.f;
+    safeX = width / height > 1.9f ? 46.f * k : 16.f;
+    safeB = width / height > 1.9f ? 14.f * k : 10.f;
     if (focus.pending) { cam.focus(focus.x, focus.y, focus.r, focus.maxZ); focus.pending = false; }
     onlineFrame(dt);
     auto events = input::drain();
+    for (auto& e : events) { e.x *= k; e.y *= k; }
     auto world = ui::beginFrame(events);
     if (!dlg.empty() || modal != Modal::None || title) world.clear();
     gfx::beginFrame(width, height);

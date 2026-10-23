@@ -116,7 +116,7 @@ bool roundButton(float cx, float cy, float r, const std::string& ic, const std::
     const char* spr = s == Style::Gold ? "ui/round_gold" : s == Style::Green ? "ui/round_green" : s == Style::Red ? "ui/round_red" : "ui/round";
     atlas::drawRect(atlas::get(spr), cx - r, cy - r, r * 2, r * 2, enabled ? 0xffffffffu : gfx::rgba(150, 150, 160, 220));
     icon(ic, cx, cy - r * 0.06f, r * 1.25f, enabled ? 0xffffffffu : gfx::rgba(180, 180, 180, 220));
-    font::draw(text, cx, cy + r - 2, 14, 0xffffffffu, font::Center);
+    font::draw(text, cx, cy + r - 4, std::max(15.f, r * 0.34f), 0xffffffffu, font::Center);
     gfx::popScale();
     return clicked;
 }
@@ -147,6 +147,48 @@ bool iconButton(const Rect& r, const std::string& ic, const std::string& text, S
     font::draw(text, r.x + r.w / 2, r.y + r.h * 0.64f, std::min(14.f, r.h * 0.2f), 0xffffffffu, font::Center);
     gfx::popScale();
     return clicked;
+}
+
+bool tile(const Rect& r, const std::string& ic, const std::string& text, Style s, bool dim, const std::string& sub, const std::string& subIcon,
+          uint32_t subColor) {
+    bool clicked = tapped(r);
+    bool pressed = activeId >= 0 && r.contains(pressX, pressY) && r.contains(curX, curY);
+    if (clicked) { audio::play("click", 0.6f); addBounce(r); }
+    float k = bounceScale(r, pressed);
+    gfx::pushScale(r.x + r.w / 2, r.y + r.h / 2, k);
+    uint32_t tint = dim ? gfx::rgba(150, 146, 160, 235) : 0xffffffffu;
+    atlas::draw9(atlas::get(styleSprite(dim ? Style::Dark : s)), r.x, r.y, r.w, r.h, 56, 22, tint);
+    bool two = !sub.empty();
+    float isz = r.h * (two ? 0.36f : 0.44f);
+    icon(ic, r.x + r.w / 2, r.y + 8 + isz / 2, isz, dim ? gfx::rgba(190, 186, 200, 230) : 0xffffffffu);
+    float ly = r.y + 12 + isz;
+    font::draw(text, r.x + r.w / 2, ly, 15, dim ? gfx::rgba(215, 210, 225) : 0xffffffffu, font::Center);
+    if (two) {
+        float ts = 15, w = font::measure(sub, ts) + (subIcon.empty() ? 0 : ts + 4);
+        float x = r.x + r.w / 2 - w / 2;
+        if (!subIcon.empty()) { icon(subIcon, x + ts / 2, ly + 22 + ts * 0.62f, ts * 1.3f); x += ts + 4; }
+        font::draw(sub, x, ly + 22, ts, subColor);
+    }
+    gfx::popScale();
+    return clicked;
+}
+
+void countBadge(float cx, float cy, int n) {
+    if (n <= 0) return;
+    std::string t = n > 9 ? "9+" : std::to_string(n);
+    atlas::drawRect(atlas::get("fx/dot"), cx - 14, cy - 14, 28, 28, gfx::rgba(30, 14, 20));
+    atlas::drawRect(atlas::get("fx/dot"), cx - 12, cy - 12, 24, 24, gfx::rgba(225, 55, 45));
+    font::draw(t, cx, cy - 9, 15, 0xffffffffu, font::Center, false);
+}
+
+void lockOverlay(const Rect& r, const std::string& reason) {
+    atlas::draw9(atlas::get("ui/card"), r.x, r.y, r.w, r.h, 40, 12, gfx::rgba(40, 28, 22, 150));
+    icon("icon/lock", r.x + r.w / 2, r.y + r.h * 0.36f, std::min(48.f, r.w * 0.4f));
+    float y = r.y + r.h * 0.36f + 30;
+    for (const auto& l : font::wrap(reason, 14, r.w - 16)) {
+        font::draw(l, r.x + r.w / 2, y, 14, 0xffffffffu, font::Center);
+        y += font::lineHeight(14);
+    }
 }
 
 void label(const std::string& text, float x, float y, float size, uint32_t color, int align) {

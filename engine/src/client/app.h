@@ -1,6 +1,7 @@
 #pragma once
 // Клиент Lanternfall: сцены деревни и боя, модальные окна, диалоги, сохранения.
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -18,6 +19,8 @@ namespace client {
 enum class Scene { Village, Battle };
 enum class Modal { None, Shop, Army, Map, Night, Codex, Menu, Result, Info, Tasks, Workshop, Chat, Clan };
 enum class BattleKind { Raid, Mission, Night };
+
+constexpr float kVirtualH = 560.f;  // высота экрана в единицах вёрстки (на телефоне 1 ед. ≈ 0.7 pt)
 
 struct Toast { std::string text; float t; uint32_t color; };
 
@@ -153,11 +156,14 @@ private:
 
     // деревня
     int selected = -1;
+    std::map<int, float> popAt;  // постройка -> время начала «пружины»
+    void celebrate(const lf::BuildingRec& b);  // стройка завершена: пружина, искры, звук, сообщение
     int selectedOb = -1;  // выбранное препятствие
     void drawObstaclePanel();
     Placing placing;
     int mapTab = 0, shopTab = 0, codexPage = 0;
     bool resetArmed = false;
+    int devTaps = 0;  // касания по версии в настройках: 5 — открыть тестовую кнопку
     void enterVillage();
     void villageFrame(float dt, const std::vector<input::Event>& world);
     void villageInput();

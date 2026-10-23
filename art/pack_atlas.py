@@ -459,7 +459,45 @@ def chat(d, s, im):
         d.ellipse((x - S * .045, S * .4, x + S * .045, S * .49), fill=(70, 60, 110, 255))
 
 
-for n, f in [("flash", flash), ("chat", chat), ("heal", heal), ("rage", rage), ("ore", ore), ("aether", aether), ("shard", shard), ("star", star), ("builder", hammer), ("army", sword),
+def info(d, s, im):
+    S = 128 * s
+    d.ellipse((S * .08, S * .08, S * .92, S * .92), fill=(30, 18, 40, 255))
+    d.ellipse((S * .15, S * .15, S * .85, S * .85), fill=(90, 150, 230, 255))
+    d.ellipse((S * .43, S * .24, S * .57, S * .38), fill=(255, 255, 255, 255))
+    d.rounded_rectangle((S * .43, S * .44, S * .57, S * .76), S * .04, fill=(255, 255, 255, 255))
+
+
+def lock(d, s, im):
+    S = 128 * s
+    d.rounded_rectangle((S * .3, S * .1, S * .7, S * .6), S * .2, outline=(30, 18, 40, 255), width=int(22 * s))
+    d.rounded_rectangle((S * .3, S * .1, S * .7, S * .6), S * .2, outline=(200, 205, 220, 255), width=int(10 * s))
+    d.rounded_rectangle((S * .16, S * .42, S * .84, S * .92), S * .1, fill=(30, 18, 40, 255))
+    d.rounded_rectangle((S * .22, S * .48, S * .78, S * .86), S * .07, fill=(240, 190, 80, 255))
+    d.ellipse((S * .44, S * .56, S * .56, S * .68), fill=(60, 40, 30, 255))
+    d.rectangle((S * .475, S * .62, S * .525, S * .78), fill=(60, 40, 30, 255))
+
+
+def heart(d, s, im):
+    S = 128 * s
+    pts = []
+    for i in range(64):
+        t = i / 64 * 2 * math.pi
+        x = 16 * math.sin(t) ** 3
+        y = 13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)
+        pts.append((S / 2 + x * S * 0.026, S * 0.48 - y * S * 0.026))
+    outlined_poly(d, pts, (235, 70, 80), s)
+    d.ellipse((S * .3, S * .3, S * .42, S * .42), fill=(255, 200, 200, 255))
+
+
+def person(d, s, im):
+    S = 128 * s
+    d.ellipse((S * .32, S * .08, S * .68, S * .44), fill=(30, 18, 40, 255))
+    d.ellipse((S * .37, S * .13, S * .63, S * .39), fill=(240, 226, 200, 255))
+    d.pieslice((S * .14, S * .46, S * .86, S * 1.3), 180, 360, fill=(30, 18, 40, 255))
+    d.pieslice((S * .2, S * .52, S * .8, S * 1.22), 180, 360, fill=(120, 170, 230, 255))
+
+
+for n, f in [("sword", sword), ("info", info), ("lock", lock), ("heart", heart), ("person", person), ("flash", flash), ("chat", chat), ("heal", heal), ("rage", rage), ("ore", ore), ("aether", aether), ("shard", shard), ("star", star), ("builder", hammer), ("army", sword),
              ("build", house), ("codex", scroll), ("night", moon), ("map", mapi), ("menu", gear), ("upgrade", up),
              ("clock", clock), ("close", close), ("eclipse", eclipse), ("flag", flag), ("lantern", lantern)]:
     icon(n, f)

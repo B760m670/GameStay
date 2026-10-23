@@ -318,7 +318,7 @@ void App::drawBattleHud() {
         for (const auto& w : B.waves) left += !w.done;
         std::string st = left ? "Волн впереди: " + std::to_string(left) : "Мгла на базе: " + std::to_string(B.aliveTroops());
         font::draw(st, cam.w - safeX, y + 10, 16, kMuted, font::Right);
-        font::draw("Потери: " + fmtNum((long long)B.lootOre) + " руды, " + fmtNum((long long)B.lootAether) + " Эфира", cam.w - safeX, y + 34, 13, kBad, font::Right, false);
+        font::draw("Потери: " + fmtNum((long long)B.lootOre) + " руды, " + fmtNum((long long)B.lootAether) + " Эфира", cam.w - safeX, y + 34, 15, kBad, font::Right);
     } else {
         int pct = B.percent();
         int stars = (pct >= 50) + B.lanternDead + (pct >= 100);
@@ -337,7 +337,7 @@ void App::drawBattleHud() {
                            : bt.sel == kRageSel ? "Нажми на карту — отряды в круге звереют"
                            : bt.sel == kHeroSel && B.heroIdx < 0 ? "Нажми во тьме — высадить Фонарщика"
                                                 : "Высаживай войска во тьме";
-        font::draw(hint, cam.w - safeX, y + 48, 14, kMuted, font::Right);
+        font::draw(hint, cam.w - safeX, y + 50, 16, kMuted, font::Right);
     }
     // нижняя панель: войска, затмение, скорость, выход
     float bh = 74, bw = 70, gap = 6;
@@ -365,7 +365,7 @@ void App::drawBattleHud() {
         else if (id == kRageSel) ui::icon("icon/rage", bx + bw / 2, by + 30, 42);
         else world::drawTroopThumb((lf::TroopType)id, bx + bw / 2, by + 30, 52);
         std::string label = id == kHeroSel ? (B.heroIdx < 0 ? "ур. " + std::to_string(B.heroLevel) : "Вспышка") : "x" + std::to_string(n);
-        font::draw(label, bx + bw / 2, by + bh - 24, id == kHeroSel ? 14 : 16, n > 0 ? 0xffffffffu : kMuted, font::Center);
+        font::draw(label, bx + bw / 2, by + bh - 24, id == kHeroSel ? 15 : 17, n > 0 ? 0xffffffffu : kMuted, font::Center);
         if (n <= 0) gfx::fillRect(bx + 3, by + 3, bw - 6, bh - 6, rgba(10, 6, 20, 120));
         if (ui::tapped(r)) {
             if (id == kHeroSel && B.heroIdx >= 0) act(lf::replay::Act::HeroAbility, 0, {0, 0});
