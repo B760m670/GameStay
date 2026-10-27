@@ -450,7 +450,7 @@ def grade(path, saturation=1.14, contrast=1.06):
     p = px.reshape(-1, 4)
     rgb = p[:, :3]
     lum = (rgb * np.array([0.299, 0.587, 0.114], np.float32)).sum(1, keepdims=True)
-    shadow = (lum[:, 0] < 0.035) & (p[:, 3] > 0)  # тень ловца на земле (сама постройка не бывает почти чёрной)
+    shadow = (lum[:, 0] < 0.035) & (p[:, 3] > 0) & (p[:, 3] < 0.97)  # тень ловца полупрозрачна; тёмные щели постройки — нет
     p[shadow, 3] = np.minimum(p[shadow, 3], 0.55)
     rgb = lum + (rgb - lum) * saturation
     p[:, :3] = np.clip((rgb - 0.5) * contrast + 0.5, 0, 1)
