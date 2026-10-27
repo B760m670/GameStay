@@ -225,6 +225,7 @@ void Battle::damageBuilding(int bi, float dmg, int attacker) {
         const TroopDef& d = *troops[attacker].def;
         if (b.isEconomy()) dmg *= d.econMult;
         if (b.isWall()) dmg *= d.wallMult;
+        if (b.isDefense()) dmg *= d.defenseMult;
     }
     float dealt = std::min(dmg, b.hp);
     if (b.lootOre > 0 || b.lootAether > 0) {
@@ -274,6 +275,10 @@ void Battle::troopAttack(int ti, int bi) {
     const TroopDef& d = *t.def;
     t.cd = d.cd;
     float dmg = d.dmg * t.dmgMult;
+    if (!t.charged) {  // натиск: первый удар по новой цели
+        dmg *= d.chargeMult;
+        t.charged = true;
+    }
     if (d.ranged != Proj::None) {
         Projectile p;
         p.kind = d.ranged;
@@ -316,6 +321,7 @@ void Battle::updateTroop(int ti, float dt) {
     t.attacking = false;
     if (t.target < 0 || buildings[t.target].dead) {
         t.target = chooseTarget(t);
+        t.charged = false;
         t.hasPath = false;
         t.wall = -1;
         if (t.target < 0) return;
@@ -439,7 +445,7 @@ void Battle::updateProjectiles(float dt) {
         else if (c.splash > 0) {
             splashTroops(c.tx, c.ty, c.splash, c.dmg, c.src);
             effects.push_back({Fx::Blast, c.tx, c.ty, 0, 0, 0.5f, 0.5f, c.splash});
-        } else if (c.troop >= 0) damageTroop(c.troop, c.dmg);
+        } else if (c.troop >= 0) damageTroop(c.troop, c.dmg * troops[c.troop].def->rangedArmor);  // стрелы, болты, пули
     }
     projectiles.erase(std::remove_if(projectiles.begin(), projectiles.end(), [](const Projectile& p) { return p.done; }), projectiles.end());
 }

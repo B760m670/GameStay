@@ -58,7 +58,7 @@ def dress_peasant(h, coat_col, hat_fur, hat_top=None, belt=(150, 40, 34), long_c
 
 def guard_shield(h, shield, lift=0.0):
     """Щит на левой руке: руку ставим в позу «щит перед собой», щит — вертикально перед грудью слева, лицом вперёд."""
-    h.reset_pose()
+    h.reset_pose(styled=False)
     A.arm(h, "L", fwd=0.55, elbow=1.15, out=-0.05)
     bpy.context.view_layer.update()
     a = h.world_head("lowerarm01.L")
@@ -76,7 +76,7 @@ def guard_shield(h, shield, lift=0.0):
 
 def aim_bow(h, bow, st):
     """Лук в левой руке: ставим руку в позу выстрела, лук — вертикально, выгибом к цели; потом привязываем к кисти."""
-    h.reset_pose()
+    h.reset_pose(styled=False)
     A.shoot_bow(h, 0.5, st)
     bpy.context.view_layer.update()
     wr = h.world_head("wrist.L")
@@ -94,7 +94,7 @@ def aim_bow(h, bow, st):
 
 def aim_gun(h, gun, st):
     """Пищаль в правой руке: ставим позу прицеливания, ствол — от правой кисти к левой, ложе вниз."""
-    h.reset_pose()
+    h.reset_pose(styled=False)
     A.shoot_gun(h, 0.4, st)
     bpy.context.view_layer.update()
     wr = h.world_head("wrist.R")
@@ -442,7 +442,7 @@ def rider_die(h, t, st):
 def rider():
     """Всадник: конь рыжей масти с седлом, на нём — человек в кафтане с саблей."""
     M = materials()
-    horse = H.Human("horse", targets=[("animal/jaldmic_horse.target", 1.0)], gender=1.0, age=0.5, muscle=0.7, weight=0.5).build()
+    horse = H.Human("horse", targets=[("animal/jaldmic_horse.target", 1.0)], stylize=False, gender=1.0, age=0.5, muscle=0.7, weight=0.5).build()
     coat = O.fabric("leather2", lin((120, 70, 38)), scale=4, sat=0.35, rough=0.45, name="horse_coat")
     horse.body.data.materials.clear()
     horse.body.data.materials.append(coat)

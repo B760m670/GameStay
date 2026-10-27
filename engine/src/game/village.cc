@@ -67,9 +67,9 @@ const char* obstacleName(ObKind k) {
     switch (k) {
         case ObKind::Bush: return "Куст";
         case ObKind::Rock: return "Валун";
-        case ObKind::Tree: return "Дерево";
+        case ObKind::Tree: return "Ель";
         case ObKind::Stump: return "Пень";
-        default: return "Цветы";
+        default: return "Папоротник";
     }
 }
 

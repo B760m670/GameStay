@@ -81,11 +81,15 @@ struct TroopDef {
     const char* name;
     const char* desc;
     uint32_t color;  // RGBA
+    const char* trait = "";  // особенность в двух-трёх словах (карточка отряда)
     bool raider = false;  // разбойник из набега, а не отряд игрока
     int housing = 1, cost = 0, time = 0, unlock = 1;
     float hp = 1, dmg = 0, cd = 1, range = 0.6f, speed = 1;
     float econMult = 1;  // множитель урона по хозяйству (лесосеки, мельницы, склады, торг)
     float wallMult = 1;  // множитель урона по частоколу
+    float defenseMult = 1;  // множитель урона по обороне (пуля стрельца пробивает щиты и срубы башен)
+    float chargeMult = 1;   // первый удар по каждой новой цели (натиск всадника)
+    float rangedArmor = 1;  // доля урона от стрел, болтов и пуль, которая проходит (щит щитника)
     Target target = Target::Any;
     Proj ranged = Proj::None;
     bool air = false;
@@ -315,6 +319,7 @@ struct BTroop {
     const TroopDef* def;
     float x, y, hp, maxHp, dmgMult = 1, cd = 0, jx, jy, angle = 0, hitT = 0, bob, animT = 0;
     float rageT = 0;  // сколько ещё действует ярость от клича Воеводы
+    bool charged = false;  // натиск по текущей цели уже потрачен
     bool air, dead = false, attacking = false;
     int target = -1, wall = -1;  // индексы построек
     std::vector<int> path;

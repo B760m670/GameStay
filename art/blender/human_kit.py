@@ -15,11 +15,14 @@ import bmesh
 import bpy
 from mathutils import Matrix, Quaternion, Vector
 
+import toon_kit as T
+
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "source", "makehuman")
 DATA = os.path.join(ROOT, "data")
 SYS = os.path.join(ROOT, "sys")
 
 _OBJ = None  # кэш разобранного base.obj
+HAIR_TINT = (0.42, 0.26, 0.14)  # в рисованном стиле волосы — тёплые каштановые
 
 
 def _base_obj():
@@ -110,7 +113,11 @@ class Human:
     После build(): self.body — меш, self.arm — арматура, self.coords — исходные координаты MakeHuman после таргетов
     (для подгонки причёсок), self.ground — сдвиг, ставящий ступни на землю."""
 
-    def __init__(self, name="human", targets=(), **macro):
+    # Утрированные пропорции рисованного стиля: крупнее голова и кисти (с оружием в них), чуть крупнее стопы.
+    STYLE_SCALE = {"head": 1.32, "wrist.L": 1.25, "wrist.R": 1.25, "foot.L": 1.12, "foot.R": 1.12}
+
+    def __init__(self, name="human", targets=(), stylize=True, **macro):
+        self.stylize = stylize and T.on()
         self.name = name
         self.macro = macro
         self.targets = list(targets)  # дополнительные таргеты: (путь относительно data/targets, вес) — например, лошадь
@@ -296,7 +303,9 @@ class Human:
         o.parent = self.arm
         md = o.modifiers.new("Armature", "ARMATURE")
         md.object = self.arm
-        o.data.materials.append(material or image_material(name, os.path.join(d, _mhmat_texture(d, name)), alpha=True))
+        tint = HAIR_TINT if T.on() and kind == "hair" else (0.45, 0.3, 0.2) if T.on() else None
+        o.data.materials.append(material or image_material(("toon_" if T.on() else "") + name, os.path.join(d, _mhmat_texture(d, name)),
+                                                           alpha=True, tint=tint))
         return o
 
     # ---------- поза ----------
@@ -314,10 +323,13 @@ class Human:
         q = Quaternion(self.rest_axis(name, axis), angle)
         pb.rotation_quaternion = q @ pb.rotation_quaternion
 
-    def reset_pose(self):
+    def reset_pose(self, styled=True):
+        """styled=False — без утрированных пропорций: так привязываются шапки и оружие, чтобы потом расти вместе с костью."""
         for pb in self.arm.pose.bones:
             pb.rotation_quaternion = (1, 0, 0, 0)
             pb.location = (0, 0, 0)
+            k = self.STYLE_SCALE.get(pb.name, 1.0) if self.stylize and styled else 1.0
+            pb.scale = (k, k, k)
 
     def key(self, frame):
         for pb in self.arm.pose.bones:
@@ -364,7 +376,17 @@ def image_material(name, path, alpha=False, rough=0.7, tint=None):
     return m
 
 
+SKIN_TONES = {"young_caucasian_male": (236, 184, 150), "young_caucasian_male2": (226, 172, 136), "middleage_caucasian_male": (222, 168, 134),
+              "old_caucasian_male": (214, 166, 140)}
+
+
 def skin_material(skin):
+    if T.on():  # рисованная кожа: ровный тёплый тон с лёгким подповерхностным рассеянием
+        m = T.solid("toon_skin_" + skin, [SKIN_TONES.get(skin, (230, 178, 142))], rough=0.6, noise=0, per_part=False)
+        b = m.node_tree.nodes["Principled BSDF"]
+        b.inputs["Subsurface Weight"].default_value = 0.15
+        b.inputs["Subsurface Radius"].default_value = (0.4, 0.15, 0.08)
+        return m
     d = os.path.join(SYS, "skins", skin)
     tex = next(f for f in os.listdir(d) if f.endswith(".png"))
     m = image_material("skin_" + skin, os.path.join(d, tex), rough=0.55)

@@ -11,6 +11,8 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
+import toon_kit as T
+
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "source", "polyhaven")
 
 _LIB = {}  # имя ассета -> {имя части: объект-образец}
@@ -37,6 +39,8 @@ def _library(asset):
         o.parent = None
         o.matrix_world = Matrix.Identity(4)
     parts = {o.name: o for o in new if o.type == "MESH"}
+    if T.on():
+        T.restyle_scan(asset, list(parts.values()))
     _LIB[asset] = parts
     return parts
 
@@ -69,6 +73,10 @@ def pbr(asset, tile_m=1.0, name=None):
     """PBR-материал из фототекстуры ассета: цвет, нормали, шероховатость (и AO из ARM, если есть).
     Проекция «коробкой» по координатам объекта без швов; tile_m — сколько единиц игры на один повтор текстуры."""
     name = name or f"pbr_{asset}"
+    if T.on() and asset in T.SOLID:
+        return T.solid("toon_" + name, **T.SOLID[asset])
+    if T.on() and asset in T.WOOD:
+        return T.wood("toon_" + name, T.WOOD[asset])
     if name in bpy.data.materials:
         return bpy.data.materials[name]
     tex_dir = os.path.join(ROOT, asset, "textures")
@@ -184,6 +192,10 @@ def grain_mat(asset, vary=0.12, name=None, moss=0.0):
     """PBR по UV-развёртке (её задают log/board); vary — разброс яркости между брёвнами;
     moss — доля поверхности под мхом и лишайником (пятнами, по мировым координатам: старый тёс, нижние венцы)."""
     name = name or f"grain_{asset}"
+    if T.on():
+        m = T.wood("toon_" + name, T.ROOF if name == "grain_tes" else T.WOOD.get(asset, T.WOOD["wood_planks_grey"]), moss=moss * 0.8)
+        m["grain"] = asset
+        return m
     if name in bpy.data.materials:
         return bpy.data.materials[name]
     m = pbr(asset, name=name)
@@ -276,8 +288,12 @@ def end_grain_mat():
     L.new(warp.outputs["Value"], scale.inputs[0])
     L.new(scale.outputs["Value"], rings.inputs[0])
     ramp = N.new("ShaderNodeValToRGB")
-    ramp.color_ramp.elements[0].color = (0.16, 0.13, 0.10, 1)
-    ramp.color_ramp.elements[1].color = (0.30, 0.26, 0.21, 1)
+    if T.on():  # светлый свежий срез с тёплыми кольцами
+        ramp.color_ramp.elements[0].color = T.lin((198, 150, 96))
+        ramp.color_ramp.elements[1].color = T.lin((232, 192, 134))
+    else:
+        ramp.color_ramp.elements[0].color = (0.16, 0.13, 0.10, 1)
+        ramp.color_ramp.elements[1].color = (0.30, 0.26, 0.21, 1)
     L.new(rings.outputs["Value"], ramp.inputs["Fac"])
     # трещины-лучи и потемневший край
     crack = N.new("ShaderNodeTexVoronoi")

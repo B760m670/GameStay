@@ -211,6 +211,37 @@ TEST(ram_breaks_palisade_rider_hits_economy) {
     CHECK(tgt >= 0 && B.buildings[tgt].isEconomy(), "rider target is economy");
 }
 
+TEST(every_troop_is_unique) {
+    // у каждого отряда игрока свой набор свойств — ни один не повторяет другого ни по одному числу роли
+    for (int i = 0; i < kPlayerTroops; i++)
+        for (int j = i + 1; j < kPlayerTroops; j++) {
+            const auto &a = T((TroopType)i), &b = T((TroopType)j);
+            CHECK(a.hp != b.hp && a.dmg != b.dmg && a.speed != b.speed && a.cost != b.cost, "%s vs %s", a.id, b.id);
+        }
+    // особенности: щит гасит стрелы, натиск всадника, пуля стрельца по обороне, топор ополченца по частоколу
+    CHECK(T(TroopType::Shield).rangedArmor < 1 && T(TroopType::Shade).chargeMult > 1, "");
+    CHECK(T(TroopType::Owl).defenseMult > 1 && T(TroopType::Torch).wallMult > 1 && T(TroopType::Sapper).wallMult > T(TroopType::Torch).wallMult, "");
+}
+
+TEST(rider_charge_on_new_target) {
+    BattleOptions o;
+    o.layout = basegen::generate(2, 6);
+    o.army[TroopType::Shade] = 1;
+    Battle B(o);
+    CHECK(B.deploy(TroopType::Shade, 1, 1), "");
+    int tgt = -1;
+    float before = 0;
+    for (int s = 0; s < 3000 && tgt < 0; s++) {  // ждём первого удара
+        B.step(1.f / 30);
+        auto& r = B.troops[0];
+        if (r.target >= 0 && !B.buildings[r.target].dead && B.buildings[r.target].hp < B.buildings[r.target].maxHp) tgt = r.target;
+        else if (r.target >= 0) before = B.buildings[r.target].hp;
+    }
+    CHECK(tgt >= 0, "rider never hit");
+    float first = before - B.buildings[tgt].hp;
+    CHECK(first >= T(TroopType::Shade).dmg * 2 * 3 * 0.99f, "charge hit=%f", first);
+}
+
 TEST(campaign_generates) {
     CHECK(campaign::missions().size() == 12, "");
     for (const auto& m : campaign::missions()) {

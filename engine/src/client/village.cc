@@ -413,9 +413,10 @@ void App::drawVillageWorld() {
         if (it.d) { world::drawDecor(cam, *it.d, t); continue; }
         if (it.actor >= 3000) {
             const auto& o = S.obstacles[it.actor - 3000];
-            static const char* trees[] = {"b/decor_tree1", "b/decor_tree5", "b/decor_tree2", "b/decor_tree7"};
-            const char* sp = o.kind == lf::ObKind::Tree ? trees[o.id % 4] : o.kind == lf::ObKind::Rock ? "b/decor_prop1"
-                           : o.kind == lf::ObKind::Stump ? "b/decor_prop6" : o.kind == lf::ObKind::Flowers ? "b/decor_prop5" : "b/decor_prop4";
+            static const char* trees[] = {"b/env_fir2", "b/env_pine1", "b/env_fir1", "b/env_pine2"};
+            static const char* bushes[] = {"b/env_bush1", "b/env_bush3", "b/env_bush2", "b/env_bush4"};
+            const char* sp = o.kind == lf::ObKind::Tree ? trees[o.id % 4] : o.kind == lf::ObKind::Rock ? (o.id % 2 ? "b/env_rock1" : "b/env_rock2")
+                           : o.kind == lf::ObKind::Stump ? "b/env_stump" : o.kind == lf::ObKind::Flowers ? "b/env_fern" : bushes[o.id % 4];
             int sz = V::obstacleSize(o.kind);
             if (o.id == selectedOb) {
                 float pulse = 0.5f + 0.5f * std::sin(t * 5);
@@ -1030,6 +1031,7 @@ void App::drawArmy() {
         sxx += stat("icon/heart", hp, sxx, syy);
         sxx += stat("icon/sword", dm, sxx, syy);
         stat("icon/person", hs, sxx, syy);
+        font::draw(d.trait, cx + cw / 2, syy + 24, 13, rgba(255, 214, 120), font::Center, false);  // особенность отряда
         if (S.army[i] > 0) {
             std::string n = "×" + std::to_string(S.army[i]);
             float w = font::measure(n, 16) + 18;

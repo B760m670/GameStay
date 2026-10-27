@@ -170,15 +170,13 @@ std::vector<Detail>& meadow() {
     static bool built = false;
     if (built) return v;
     built = true;
-    // рисованные мелочи луга (art/source/generated/sheet_ground): трава, высокая трава, папоротник, колокольчики, маки,
-    // ромашки, камешки, грибы — трава чаще прочего
-    // gd1 трава, gd2 высокая трава, gd16 папоротник, gd3/gd5 колокольчики, gd8 маки, gd13 ромашки, gd14 грибы
-    static const char* kinds[] = {"b/decor_gd1", "b/decor_gd2", "b/decor_gd1", "b/decor_gd16", "b/decor_gd3", "b/decor_gd8",
-                                  "b/decor_gd13", "b/decor_gd1", "b/decor_gd2", "b/decor_gd14", "b/decor_gd5"};
+    // мелочи луга (art/blender/model_env.py): папоротник, крапива, валежник, камешки, кустики
+    static const char* kinds[] = {"b/env_fern", "b/env_nettle", "b/env_branches", "b/env_rock5", "b/env_bush2", "b/env_fern",
+                                  "b/env_rock4", "b/env_nettle", "b/env_bush4", "b/env_branches", "b/env_fern"};
     for (int j = lf::kBorder; j < lf::kGrid - lf::kBorder; j++)
         for (int i = lf::kBorder; i < lf::kGrid - lf::kBorder; i++) {
             uint32_t h = hash2(i * 3 + 7, j * 5 + 11);
-            if (h % 100 >= 15) continue;  // реже: луг не должен спорить с постройками
+            if (h % 100 >= 4) continue;  // редко: луг не должен спорить с постройками
             const atlas::Sprite* sp = atlas::get(kinds[(h >> 8) % 11]);
             if (!sp) continue;
             v.push_back({sp, i + 0.2f + ((h >> 12) & 15) / 25.f, j + 0.2f + ((h >> 16) & 15) / 25.f});
@@ -286,19 +284,17 @@ const std::vector<Decor>& decor() {
     put("b/decor_sp3", -5.5f, 11.f, 2);
     put("b/decor_sp2", -3.f, 13.f, 1, 1);
     put("b/decor_sp9", -2.f, 14.6f, 1);
-    // руины старого маяка
-    put("b/decor_sp6", 6.f, -5.5f, 2);
-    put("b/decor_sp4", 9.f, -3.5f, 1);
-    put("b/decor_sp5", 3.f, -3.2f, 1);
-    put("b/decor_sp8", 11.f, -6.5f, 1);
-    put("b/decor_prop3", 1.5f, -6.f, 1);
-    // лес и скалы по остальному краю
-    // рисованный декор (art/source/generated/sheet_trees, sheet_props): дуб, ель, берёза, дуб, рябина, яблоня;
-    // скала, валуны, кусты, цветущий пень, пень, грибы
-    static const char* trees[] = {"b/decor_tree1", "b/decor_tree2", "b/decor_tree3", "b/decor_tree5", "b/decor_tree2", "b/decor_tree6",
-                                  "b/decor_tree7", "b/decor_tree2"};
-    static const char* small[] = {"b/decor_prop2", "b/decor_prop3", "b/decor_prop4", "b/decor_prop5", "b/decor_prop6", "b/decor_prop7",
-                                  "b/decor_prop8"};
+    // валуны и бурелом у опушки
+    put("b/env_rock1", 6.f, -5.5f, 2);
+    put("b/env_deadlog", 9.5f, -3.5f, 2);
+    put("b/env_stump", 3.f, -3.2f, 1);
+    put("b/env_roots", 11.f, -6.5f, 1);
+    put("b/env_rock3", 1.5f, -6.f, 1);
+    // тайга по остальному краю (art/blender/model_env.py): сосны, ели, молодняк; валуны, кусты, пни, валежник
+    static const char* trees[] = {"b/env_pine1", "b/env_fir1", "b/env_pine2", "b/env_fir2", "b/env_fir3", "b/env_pine3",
+                                  "b/env_fir1", "b/env_deadlog"};
+    static const char* small[] = {"b/env_bush1", "b/env_sapling1", "b/env_bush3", "b/env_rock3", "b/env_stump", "b/env_sapling2",
+                                  "b/env_roots"};
     auto blocked = [&](float x, float y) {
         if (waterDist(x, y) < 1.3f) return true;                                         // ручей с берегами
         if (y > lf::kGrid - 1 && std::fabs(x - 22.4f) < 1.6f) return true;               // тропы
@@ -322,7 +318,8 @@ const std::vector<Decor>& decor() {
             if (!ok) continue;
             for (int dy = 0; dy < sz; dy++)
                 for (int dx = 0; dx < sz; dx++) used[idx(i + dx, j + dy)] = 1;
-            const char* name = big ? ((h >> 13) % 6 == 0 ? "b/decor_prop1" : trees[(h >> 15) % 8]) : small[(h >> 15) % 7];
+            const char* name = big ? ((h >> 13) % 6 == 0 ? ((h >> 20) & 1 ? "b/env_rock1" : "b/env_rock2") : trees[(h >> 15) % 8])
+                                   : small[(h >> 15) % 7];
             v.push_back({name, (float)i, (float)j, sz, i + j + sz * 1.f});
         }
     return v;

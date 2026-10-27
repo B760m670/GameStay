@@ -12,6 +12,7 @@ import bpy
 from mathutils import Matrix, Vector, kdtree
 
 import scan_kit as S
+import toon_kit as T
 
 TEX = {
     "wool": "poly_wool_herringbone", "felt": "caban", "fleece": "knitted_fleece", "linen": "rough_linen",
@@ -34,6 +35,11 @@ def fabric(kind, tint, scale=9.0, metal=0.0, rough=None, sat=0.25, name=None):
     """Ткань/кожа/металл по UV тела: фототекстура обесцвечивается (sat) и окрашивается в tint (линейный RGB)."""
     asset = TEX.get(kind, kind)
     name = name or f"fab_{kind}_{'_'.join(f'{c:.2f}' for c in tint)}_{scale}"
+    if T.on():  # рисованная ткань/кожа/металл: чистый цвет, мягкая фактура
+        base = tuple(int(255 * max(0.0, v) ** (1 / 2.2)) for v in tint[:3])
+        shade = tuple(int(v * 0.86) for v in base)
+        return T.solid("toon_" + name, [base, shade], rough=rough if rough is not None else (0.35 if metal else 0.8), metal=metal,
+                       noise=scale * 1.5, bump=0.15, per_part=False, coords="UV")
     if name in bpy.data.materials:
         return bpy.data.materials[name]
     m = S.pbr(asset, name=name)
