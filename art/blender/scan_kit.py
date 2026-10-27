@@ -193,7 +193,7 @@ def grain_mat(asset, vary=0.12, name=None, moss=0.0):
     moss — доля поверхности под мхом и лишайником (пятнами, по мировым координатам: старый тёс, нижние венцы)."""
     name = name or f"grain_{asset}"
     if T.on():
-        m = T.wood("toon_" + name, T.ROOF if name == "grain_tes" else T.WOOD.get(asset, T.WOOD["wood_planks_grey"]), moss=moss * 0.8)
+        m = T.wood("toon_" + name, T.ROOF if name == "grain_tes" else T.WOOD.get(asset, T.WOOD["wood_planks_grey"]), moss=moss * (0.35 if name == "grain_tes" else 0.8))
         m["grain"] = asset
         return m
     if name in bpy.data.materials:

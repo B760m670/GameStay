@@ -18,6 +18,7 @@ import model_kit as K  # noqa: E402
 import anim_kit as A  # noqa: E402
 import outfit_kit as O  # noqa: E402
 import render_sprites as R  # noqa: E402
+import toon_kit as T  # noqa: E402
 import scan_kit as S  # noqa: E402
 
 TILE_M = 2.5  # метров в клетке
@@ -480,6 +481,7 @@ def rider():
 
 
 UNITS = {k: single(f) for k, f in PEOPLE.items()}
+UNIT_ZOOM = 1.5
 UNITS.update({"sapper": ram, "shade": rider})
 
 
@@ -492,7 +494,7 @@ def main():
         K.palette()
         u = UNITS[name]()
         K.light_rig(sc)
-        sc.view_settings.exposure = 0.55
+        sc.view_settings.exposure = T.exposure(0.55)
         pose(u, "idle", 0.0, 0)
         cam, pivot = R.setup_camera(u.st.get("size", 1), u.st.get("cam", 0.85))
         if opts.get("preview"):  # лист проверки: крупно, два направления, все анимации
@@ -502,6 +504,10 @@ def main():
             render_frames(u, sc, out_dir, [0, 1], {"move": MOVE8, "attack": ATK6, "idle": IDLE4[:2], "die": DIE5})
             print("[units]", name, "preview ->", out_dir)
             continue
+        # как в рисованных стратегиях, люди крупнее, чем «по линейке» рядом с постройками: кадр рендерится в 1,5 раза
+        # крупнее при том же кадрировании, точка опоры масштабируется вместе с ним
+        sc.render.resolution_percentage = int(UNIT_ZOOM * 100)
+        pivot = (pivot[0] * UNIT_ZOOM, pivot[1] * UNIT_ZOOM)
         out_dir = os.path.join(opts["out"], "units", name)
         os.makedirs(out_dir, exist_ok=True)
         render_frames(u, sc, out_dir, range(5), {"move": MOVE8, "attack": ATK6, "idle": IDLE4, "die": DIE5})

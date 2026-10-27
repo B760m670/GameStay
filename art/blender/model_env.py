@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import model_hq as HQ  # noqa: E402
 import model_kit as K  # noqa: E402
 import render_sprites as R  # noqa: E402
+import toon_kit as T  # noqa: E402
 import scan_kit as S  # noqa: E402
 
 TILE_M = 2.5
@@ -139,7 +140,7 @@ def main():
         K.palette()
         size, height = make(name, random.Random(name))
         K.light_rig(sc)
-        sc.view_settings.exposure = 0.5
+        sc.view_settings.exposure = T.exposure(0.5)
         cam, pivot = R.setup_camera(size, height, extra_w=int(height * R.PPU * 0.6))
         path = os.path.join(out_dir, f"env_{name}.png")
         sc.render.filepath = path

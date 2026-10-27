@@ -150,7 +150,7 @@ struct TaskDef {
 
 struct BattleResult;
 
-// Препятствия на поляне: кусты, валуны, деревья. Расчищаются за руду, дают осколки и опыт; со временем вырастают новые.
+// Препятствия на поляне: кусты, валуны, деревья. Расчищаются за лес, дают серебро и опыт; со временем вырастают новые.
 enum class ObKind { Bush, Rock, Tree, Stump, Flowers, Count };
 struct Obstacle { int id = 0; ObKind kind = ObKind::Bush; int x = 0, y = 0; };
 constexpr int kMaxObstacles = 30;
@@ -262,7 +262,7 @@ int obstacleSize(ObKind k);
 int obstacleCost(ObKind k);  // руда
 const char* obstacleName(ObKind k);
 const Obstacle* obstacleAtCell(const VillageState& S, int x, int y);
-int obstacleShards(const Obstacle& o);  // сколько осколков даст расчистка
+int obstacleShards(const Obstacle& o);  // сколько серебра даст расчистка
 Result clearObstacle(VillageState& S, int id, int* shards = nullptr);
 void seedObstacles(VillageState& S, int seed, int count);
 // Герой.

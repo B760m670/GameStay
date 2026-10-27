@@ -271,19 +271,19 @@ const std::vector<Decor>& decor() {
         v.push_back({sp, x, y, sz, x + y + sz + dz, fx});
         mark(x, y, sz);
     };
-    // мосты там, где тропы пересекают ручей (рисованный лист art/source/generated/sheet_special)
-    put("b/decor_sp1", 22.4f, streamCenter(22.4f), 2, 0, -0.6f);
-    put("b/decor_sp1m", streamCenter(22.4f), 22.4f, 2, 0, -0.6f);
+    // мостки там, где тропы пересекают ручей (убранство поляны — art/blender/model_buildings.py, DECOR)
+    put("b/decor_bridge_y", 22.4f, streamCenter(22.4f), 2, 0, -0.6f);
+    put("b/decor_bridge_x", streamCenter(22.4f), 22.4f, 2, 0, -0.6f);
     // кувшинки
     const float lil[][2] = {{47.4f, 49.4f}, {49.8f, 47.6f}, {49.3f, 50.1f}, {47.0f, 47.9f}, {50.6f, 49.0f}, {12.5f, streamCenter(12.5f)}, {streamCenter(31.f), 31.f}};
     for (int i = 0; i < 7; i++) put(i % 2 ? "b/decor_lily_small" : "b/decor_lily", lil[i][0], lil[i][1], 1, 2, -1.f);
-    // тыквенные грядки слева
+    // огород: капустные гряды слева
     for (int yy = 26; yy < 35; yy += 2)
-        for (int xx = -7; xx <= -3; xx += 2) put("b/decor_sp7", xx + 0.5f, yy + 0.5f + (xx & 2) * 0.25f, 1);
-    // стоянка путников: палатка, костёр с указателем, скамья из бревна
-    put("b/decor_sp3", -5.5f, 11.f, 2);
-    put("b/decor_sp2", -3.f, 13.f, 1, 1);
-    put("b/decor_sp9", -2.f, 14.6f, 1);
+        for (int xx = -7; xx <= -3; xx += 2) put("b/decor_bed", xx + 0.5f, yy + 0.5f + (xx & 2) * 0.25f, 1);
+    // стоянка промысловиков: чум, костёр с котелком, скамья из бревна
+    put("b/decor_chum", -5.5f, 11.f, 2);
+    put("b/decor_fire", -3.f, 13.f, 1, 1);
+    put("b/decor_bench", -2.f, 14.6f, 1);
     // валуны и бурелом у опушки
     put("b/env_rock1", 6.f, -5.5f, 2);
     put("b/env_deadlog", 9.5f, -3.5f, 2);
@@ -537,7 +537,9 @@ void drawTroop(const Camera& cam, const lf::BTroop& tr, float t, float deadT) {
     }
     if (tr.hp < tr.maxHp || tr.type == lf::TroopType::Hero) {
         float w = 22 * std::max(0.7f, cam.zoom);
-        float y = p.y - 44 * cam.zoom;
+        // полоска над головой: высота фигуры — по кадру покоя (у всадника и тарана выше, чем у пешего)
+        const atlas::Sprite* still = atlas::get(std::string("u/") + tr.def->id + "/idle_0_0");
+        float y = p.y - (still ? still->py * 0.5f + 6 : 44) * cam.zoom;
         gfx::fillRect(p.x - w / 2 - 1, y - 1, w + 2, 6, rgba(10, 6, 18, 200));
         gfx::fillRect(p.x - w / 2, y, w * std::max(0.f, tr.hp / tr.maxHp), 4,
                       tr.def->raider ? rgba(230, 90, 70) : tr.type == lf::TroopType::Hero ? rgba(255, 210, 80) : rgba(130, 220, 80));

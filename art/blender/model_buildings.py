@@ -20,6 +20,7 @@ import model_hq as HQ  # noqa: E402
 import model_kit as K  # noqa: E402
 import outfit_kit as O  # noqa: E402
 import render_sprites as R  # noqa: E402
+import toon_kit as T  # noqa: E402
 import scan_kit as S  # noqa: E402
 
 frame = HQ.frame
@@ -600,6 +601,120 @@ def palisade_piece(tier, part):
     return h + 0.1
 
 
+# ---------- убранство поляны (вместо сгенерированных спрайтов) ----------
+def bridge(axis):
+    """Мостик через ручей: две слеги-прогона на камнях, поперечный настил из плах, перила на столбиках."""
+    M, rnd = Mats(), random.Random(201)
+    L, half_w, z = 2.3, 0.32, 0.16
+    def P(u, v, h):  # u — вдоль моста, v — поперёк
+        return (u, v, h) if axis == "x" else (v, u, h)
+    for v in (-half_w + 0.06, half_w - 0.06):
+        S.log(P(-L / 2, v, z - 0.06), P(L / 2, v, z - 0.06), 0.055, M.logs, rnd.randrange(1 << 30), sag=0.01)
+    for u in (-L / 2 + 0.05, L / 2 - 0.05):
+        S.stone_block((0.24, 0.8, 0.14) if axis == "x" else (0.8, 0.24, 0.14), P(u, 0, 0.04), M.stone, seed=rnd.randrange(99), disp=0.02)
+    n = int(L / 0.12)
+    for i in range(n):
+        u = -L / 2 + (i + 0.5) * L / n
+        ww = rnd.uniform(0.9, 1.0) * 2 * half_w + 0.06
+        S.board((ww, L / n * 0.9, 0.03), frame(P(0, 1, 0), (0, 0, 1), P(u, rnd.uniform(-0.02, 0.02), z + rnd.uniform(-0.004, 0.004))), M.boards,
+                rnd.randrange(1 << 30))
+    for v in (-half_w, half_w):
+        us = (-L / 2 + 0.12, 0.0, L / 2 - 0.12)
+        for u in us:
+            post(*P(u, v, 0)[:2], z, z + 0.32, M, rnd, r=0.025)
+        S.log(P(us[0] - 0.05, v, z + 0.3), P(us[-1] + 0.05, v, z + 0.3), 0.022, M.logs, rnd.randrange(1 << 30), sag=0.0)
+    for k in range(6):  # осока у берегов
+        u = (-1 if k % 2 else 1) * (L / 2 - 0.1 + rnd.uniform(0, 0.2))
+        S.place("grass_medium_01", HQ.GRASS[k % len(HQ.GRASS)], P(u, rnd.uniform(-0.5, 0.5), 0.0), scale=rnd.uniform(1.0, 1.4),
+                rot_z=rnd.uniform(0, 6.28))
+    return 0.6
+
+
+def garden_bed():
+    """Огородная гряда в дощатом коробе: земля, три ряда капусты."""
+    M, rnd = Mats(), random.Random(211)
+    soil = O.plain("soil", lin((96, 66, 44)), rough=0.95)
+    K.box((0.86, 0.86, 0.1), soil, loc=(0, 0, 0.05), bevel=0.04)
+    for sgn in (-1, 1):
+        S.board((0.92, 0.04, 0.12), frame((1, 0, 0), (0, 1, 0), (0, sgn * 0.45, 0.06)), M.boards, rnd.randrange(1 << 30))
+        S.board((0.92, 0.04, 0.12), frame((0, 1, 0), (-1, 0, 0), (sgn * 0.45, 0, 0.06)), M.boards, rnd.randrange(1 << 30))
+    leaf = O.fabric("linen", lin((120, 176, 80)), scale=4, name="cabbage_leaf")
+    head = O.fabric("linen", lin((176, 210, 120)), scale=4, name="cabbage_head")
+    for i in range(3):
+        for j in range(3):
+            x, y = -0.27 + i * 0.27 + rnd.uniform(-0.03, 0.03), -0.27 + j * 0.27 + rnd.uniform(-0.03, 0.03)
+            r = rnd.uniform(0.075, 0.095)
+            O.revolve("cab_leaves", [(0.0, 0.1), (r * 1.5, 0.12), (r * 1.7, 0.17), (r * 1.2, 0.15)], leaf, Vector((x, y, 0)), segs=10)
+            K.sphere(r, head, (x, y, 0.1 + r * 0.8), scale=(1, 1, 0.85))
+    return 0.3
+
+
+def hide_tent():
+    """Чум промысловиков: конус из жердей, покрышка из шкур, тёмный вход, концы жердей торчат над дымоходом."""
+    M, rnd = Mats(), random.Random(221)
+    r, h = 0.62, 1.15
+    hide = O.fabric("leather2", lin((168, 136, 98)), scale=3, sat=0.4, rough=0.8, name="tent_hide")
+    O.revolve("tent_cover", [(r, 0.0), (r * 0.72, h * 0.3), (r * 0.36, h * 0.66), (0.07, h * 0.9)], hide, Vector((0, 0, 0)), segs=9)
+    for k in range(9):
+        a = k * 2 * math.pi / 9 + 0.2
+        S.log((math.cos(a) * r * 1.02, math.sin(a) * r * 1.02, 0.0), (-math.cos(a) * 0.14, -math.sin(a) * 0.14, h * 1.2), 0.014, M.logs,
+              rnd.randrange(1 << 30), sag=0.0)
+    dark = O.plain("tent_dark", lin((40, 34, 28)))
+    a = -math.pi / 4  # вход — к зрителю (камера смотрит с +X −Y)
+    c = Vector((math.cos(a) * (r + 0.02), math.sin(a) * (r + 0.02), 0.0))
+    O._prism_obj("tent_door", [(-0.16, 0.0), (0.16, 0.0), (0.0, 0.5)], 0.02, dark, frame((-math.sin(a), math.cos(a), 0), (0, 0, 1), c + Vector((0, 0, 0.0)))
+                 @ Matrix.Rotation(-0.5, 4, "X"))
+    S.place("bark_debris_01", "bark_debris_01_a", (0.6, 0.55, 0.0), scale=0.5, rot_z=1.0)
+    log_stack(0.35, -0.95, 0.0, 0.55, 2, 3, M, rnd, axis="x", r=0.045)
+    band = O.fabric("leather2", lin((120, 92, 64)), scale=3, sat=0.4, rough=0.8, name="tent_hide_dark")
+    O.revolve("tent_band", [(r * 0.75, h * 0.27), (r * 0.66, h * 0.36)], band, Vector((0, 0, 0.005)), segs=9, scale=(1.02, 1.02, 1))
+    grass_around(rnd, 0.95, 12)
+    return h * 1.2
+
+
+def fire_pot():
+    """Костёр на стоянке: камни, поленья, котелок на тагане-треноге."""
+    M, rnd = Mats(), random.Random(231)
+    campfire(0.0, 0.0, M, rnd)
+    for a in (0.3, 2.4, 4.5):
+        S.log((math.cos(a) * 0.2, math.sin(a) * 0.2, 0.0), (0, 0, 0.42), 0.012, M.logs, rnd.randrange(1 << 30), sag=0.0)
+    O.revolve("kettle", [(0.0, 0.2), (0.06, 0.21), (0.08, 0.25), (0.08, 0.3), (0.065, 0.33)], M.iron, Vector((0, 0, 0)), segs=12)
+    return 0.5
+
+
+def log_bench():
+    """Скамья у костра: половинка бревна на двух чурбаках."""
+    M, rnd = Mats(), random.Random(241)
+    for x in (-0.3, 0.3):
+        S.log((x, 0, 0.0), (x, 0, 0.2), 0.09, M.logs, rnd.randrange(1 << 30), sag=0.0)
+    S.log((-0.45, 0, 0.26), (0.45, 0, 0.26), 0.075, M.logs, rnd.randrange(1 << 30), sag=0.0)
+    grass_around(rnd, 0.45, 6)
+    return 0.4
+
+
+def lily(big):
+    """Листья кувшинки на воде (без тени): круглые листья с вырезом, у большой — белый цветок."""
+    rnd = random.Random(251 + big)
+    leaf = O.fabric("linen", lin((84, 150, 70)), scale=4, name="lily_leaf")
+    for k in range(3 if big else 2):
+        r = rnd.uniform(0.11, 0.15) * (1.0 if big else 0.8)
+        x, y = rnd.uniform(-0.18, 0.18), rnd.uniform(-0.18, 0.18)
+        a0 = rnd.uniform(0, 6.28)
+        pts = [(math.cos(a0 + 0.3 + t * (2 * math.pi - 0.6) / 16) * r, math.sin(a0 + 0.3 + t * (2 * math.pi - 0.6) / 16) * r) for t in range(17)]
+        O._prism_obj("lily_pad", [(0.0, 0.0)] + pts, 0.01, leaf, Matrix.Translation((x, y, 0.005)) @ Matrix.Rotation(math.pi / 2, 4, "X"))
+    if big:
+        petal = O.plain("lily_petal", lin((250, 246, 236)), rough=0.5)
+        O.revolve("lily_flower", [(0.0, 0.0), (0.05, 0.02), (0.07, 0.06), (0.0, 0.03)], petal, Vector((0.02, 0.0, 0.0)), segs=8)
+        O.revolve("lily_core", [(0.0, 0.03), (0.018, 0.04), (0.0, 0.055)], O.plain("lily_core", lin((240, 200, 60))), Vector((0.02, 0.0, 0.0)), segs=8)
+    return 0.1
+
+
+DECOR = {"bridge_x": (2, lambda: bridge("x")), "bridge_y": (2, lambda: bridge("y")), "bed": (1, garden_bed), "chum": (2, hide_tent),
+         "fire": (1, lambda: fire_pot() * ENLARGE), "bench": (1, lambda: log_bench() * ENLARGE),
+         "lily": (1, lambda: lily(True) * ENLARGE), "lily_small": (1, lambda: lily(False) * ENLARGE)}
+ENLARGE = 1.7
+
+
 TURRETS = {"ballista": (3, crossbow_tower), "catapult": (3, cannon_battery)}
 DEFENSE = {"brazier": (2, pitch_cauldron), "prism": (2, wall_gun_tower), "trap": (1, wolf_pit)}
 
@@ -631,7 +746,7 @@ def scene(opts):
 
 def finish(sc):
     K.light_rig(sc)
-    sc.view_settings.exposure = 0.62
+    sc.view_settings.exposure = T.exposure(0.62)
 
 
 def main():
@@ -662,6 +777,22 @@ def main():
             for d in range(8):
                 t.turn(d * math.pi / 4)
                 shot(sc, size, height, os.path.join(out_dir, f"{bid}_t{tier}_d{d}.png"))
+    for name, (size, fn) in DECOR.items():
+        if only and name not in only and "decor" not in only:
+            continue
+        sc = scene(opts)
+        before = set(bpy.data.objects)
+        height = fn()
+        if name in ("fire", "bench") or name.startswith("lily"):
+            for o in set(bpy.data.objects) - before:
+                if o.type == "MESH":
+                    o.matrix_world = Matrix.Diagonal((ENLARGE, ENLARGE, ENLARGE, 1)) @ o.matrix_world
+        finish(sc)
+        if name.startswith("lily"):  # на воде тени нет
+            for o in bpy.data.objects:
+                if o.type == "MESH":
+                    o.visible_shadow = False
+        shot(sc, size, height, os.path.join(out_dir, f"decor_{name}.png"), extra=0)
     if not only or "wall" in only:
         for tier in tiers:
             for part in ("post", "x", "y"):

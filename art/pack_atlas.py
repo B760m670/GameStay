@@ -449,13 +449,6 @@ def scroll(d, s, im):
         d.line((S * .32, y, S * .68, y), fill=(150, 120, 80, 255), width=int(5 * s))
 
 
-def moon(d, s, im):
-    S = 128 * s
-    d.ellipse((S * .14, S * .12, S * .86, S * .84), fill=(30, 18, 40, 255))
-    d.ellipse((S * .2, S * .18, S * .8, S * .78), fill=(220, 210, 255, 255))
-    d.ellipse((S * .38, S * .08, S * .98, S * .68), fill=(0, 0, 0, 0))
-
-
 def mapi(d, s, im):
     S = 128 * s
     outlined_poly(d, [(S * .12, S * .24), (S * .38, S * .14), (S * .62, S * .24), (S * .88, S * .14), (S * .88, S * .78), (S * .62, S * .88), (S * .38, S * .78), (S * .12, S * .88)], (200, 220, 160), s)
@@ -493,23 +486,10 @@ def close(d, s, im):
         d.line((S * .78, S * .22, S * .22, S * .78), fill=c + (255,), width=int(w * s))
 
 
-def eclipse(d, s, im):
-    S = 128 * s
-    d.ellipse((S * .1, S * .1, S * .9, S * .9), fill=(160, 110, 240, 255))
-    d.ellipse((S * .2, S * .2, S * .8, S * .8), fill=(12, 6, 24, 255))
-
-
 def flag(d, s, im):
     S = 128 * s
     d.line((S * .28, S * .1, S * .28, S * .92), fill=(30, 18, 40, 255), width=int(14 * s))
     outlined_poly(d, [(S * .3, S * .14), (S * .84, S * .26), (S * .3, S * .52)], (240, 240, 250), s)
-
-
-def lantern(d, s, im):
-    S = 128 * s
-    outlined_poly(d, [(S * .3, S * .3), (S * .7, S * .3), (S * .74, S * .82), (S * .26, S * .82)], (255, 200, 90), s)
-    d.ellipse((S * .4, S * .44, S * .6, S * .72), fill=(255, 250, 220, 255))
-    d.polygon([(S * .24, S * .32), (S * .5, S * .1), (S * .76, S * .32)], fill=(90, 70, 140, 255))
 
 
 def heal(d, s, im):
@@ -521,13 +501,46 @@ def heal(d, s, im):
 
 
 def rage(d, s, im):
+    """Боевой рог: изогнутый турий рог с окованным раструбом."""
     S = 128 * s
     d.ellipse((S * .08, S * .08, S * .92, S * .92), fill=(30, 18, 40, 255))
     d.ellipse((S * .15, S * .15, S * .85, S * .85), fill=(200, 50, 60, 255))
-    pts = [(S * .5, S * .18), (S * .64, S * .4), (S * .7, S * .3), (S * .76, S * .56), (S * .66, S * .8), (S * .34, S * .8), (S * .24, S * .56),
-           (S * .32, S * .36), (S * .4, S * .46)]
-    outlined_poly(d, pts, (255, 190, 70), s)
-    d.polygon([(S * .5, S * .48), (S * .6, S * .66), (S * .54, S * .78), (S * .46, S * .78), (S * .4, S * .66)], fill=(255, 245, 200, 255))
+    top, bot = [], []
+    for i in range(13):  # рог по дуге: узкий конец слева внизу, раструб справа вверху
+        k = i / 12
+        a = math.pi * (1.05 - 0.75 * k)
+        cx, cy = S * .5 + math.cos(a) * S * .26, S * .66 - math.sin(a) * S * .3
+        w = S * (.025 + .1 * k * k)
+        nx, ny = math.cos(a), -math.sin(a)
+        top.append((cx + nx * w, cy + ny * w))
+        bot.append((cx - nx * w, cy - ny * w))
+    outlined_poly(d, top + bot[::-1], (240, 222, 176), s)
+    for k in (4, 8):  # оковки
+        d.line((top[k], bot[k]), fill=(150, 110, 60, 255), width=int(6 * s))
+    d.line((top[12], bot[12]), fill=(230, 180, 70, 255), width=int(9 * s))
+
+
+def raid(d, s, im):
+    """Набег: два скрещённых топора."""
+    S = 128 * s
+    for flip in (1, -1):
+        x0, x1 = (S * .2, S * .8) if flip == 1 else (S * .8, S * .2)
+        d.line((x0, S * .86, x1, S * .18), fill=(30, 18, 40, 255), width=int(20 * s))
+        d.line((x0, S * .86, x1, S * .18), fill=(170, 110, 60, 255), width=int(9 * s))
+        hx = S * .5 + (S * .2 if flip == 1 else -S * .2)
+        outlined_poly(d, [(hx, S * .2), (hx + flip * S * .2, S * .1), (hx + flip * S * .24, S * .36), (hx + flip * S * .04, S * .38)], (200, 206, 222), s)
+
+
+def fort(d, s, im):
+    """Острог: рубленая башня с шатровой кровлей над частоколом."""
+    S = 128 * s
+    outlined_poly(d, [(S * .1, S * .9), (S * .1, S * .6), (S * .9, S * .6), (S * .9, S * .9)], (200, 140, 80), s)
+    for k in range(5):
+        x = S * (.1 + k * .2)
+        d.polygon([(x, S * .62), (x + S * .1, S * .5), (x + S * .2, S * .62)], fill=(200, 140, 80, 255))
+    outlined_poly(d, [(S * .32, S * .9), (S * .32, S * .36), (S * .68, S * .36), (S * .68, S * .9)], (214, 156, 94), s)
+    outlined_poly(d, [(S * .26, S * .4), (S * .5, S * .06), (S * .74, S * .4)], (134, 86, 54), s)
+    d.rectangle((S * .44, S * .5, S * .56, S * .62), fill=(40, 26, 20, 255))
 
 
 def flash(d, s, im):
@@ -590,8 +603,8 @@ def person(d, s, im):
 
 
 for n, f in [("sword", sword), ("info", info), ("lock", lock), ("heart", heart), ("person", person), ("flash", flash), ("chat", chat), ("heal", heal), ("rage", rage), ("ore", ore), ("aether", aether), ("shard", shard), ("star", star), ("builder", hammer), ("army", sword),
-             ("build", house), ("codex", scroll), ("night", moon), ("map", mapi), ("menu", gear), ("upgrade", up),
-             ("clock", clock), ("close", close), ("eclipse", eclipse), ("flag", flag), ("lantern", lantern)]:
+             ("build", house), ("codex", scroll), ("night", raid), ("map", mapi), ("menu", gear), ("upgrade", up),
+             ("clock", clock), ("close", close), ("flag", flag), ("lantern", fort)]:
     icon(n, f)
 icon("star_off", lambda d, s, im: star(d, s, im, (70, 60, 90)))
 

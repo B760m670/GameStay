@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import model_kit as K  # noqa: E402
 import scan_kit as S  # noqa: E402
 import render_sprites as R  # noqa: E402
+import toon_kit as T  # noqa: E402
 
 SIZE = 4  # клеток; координаты Blender: 1 единица = 1 клетка (≈ 2,5 м)
 GRASS = ["grass_medium_01_large_a", "grass_medium_01_large_b", "grass_medium_01_mid_a", "grass_medium_01_tall_a",
@@ -488,7 +489,7 @@ def main():
         K.palette()  # сцена сброшена: кэши материалов и заготовок model_kit тоже
         height = ruins() if level == 0 else ostrog(level)
         K.light_rig(sc)
-        sc.view_settings.exposure = 0.45 if level == 0 else 0.62  # фототекстуры темнее процедурных цветов
+        sc.view_settings.exposure = T.exposure(0.45 if level == 0 else 0.62)  # фототекстуры темнее процедурных цветов
         cam, pivot = R.setup_camera(SIZE, height, extra_w=int(height * R.PPU * 0.9))
         out_dir = os.path.join(opts["out"], "buildings")
         os.makedirs(out_dir, exist_ok=True)

@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import model_kit as K  # noqa: E402
 import outfit_kit as O  # noqa: E402
 import render_sprites as R  # noqa: E402
+import toon_kit as T  # noqa: E402
 import scan_kit as S  # noqa: E402
 
 
@@ -134,7 +135,7 @@ ICONS = {"ore": wood_icon, "aether": bread_icon, "shard": silver_icon, "builder"
 def render(name, objs, yaw, opts):
     sc = bpy.context.scene
     sc.render.resolution_x = sc.render.resolution_y = 256
-    sc.view_settings.exposure = 0.5
+    sc.view_settings.exposure = T.exposure(0.5)
     cam_data = bpy.data.cameras.new("Cam")
     cam_data.type = "ORTHO"
     cam = bpy.data.objects.new("Cam", cam_data)
