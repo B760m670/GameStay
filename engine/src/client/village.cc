@@ -33,12 +33,12 @@ float costLabel(lf::Res r, long long amount, float x, float y, float size, uint3
 }
 
 const lf::BType kShopTabs[4][6] = {
-    {lf::BType::Ballista, lf::BType::Brazier, lf::BType::Catapult, lf::BType::Prism, lf::BType::Trap, lf::BType::Count},
-    {lf::BType::Beacon, lf::BType::Wall, lf::BType::Count, lf::BType::Count, lf::BType::Count, lf::BType::Count},
-    {lf::BType::OreMine, lf::BType::AetherWell, lf::BType::OreStore, lf::BType::AetherStore, lf::BType::BuilderHut, lf::BType::Count},
+    {lf::BType::Ballista, lf::BType::Brazier, lf::BType::Catapult, lf::BType::Prism, lf::BType::Trap, lf::BType::Wall},
+    {lf::BType::OreMine, lf::BType::AetherWell, lf::BType::Beacon, lf::BType::Count, lf::BType::Count, lf::BType::Count},
+    {lf::BType::OreStore, lf::BType::AetherStore, lf::BType::BuilderHut, lf::BType::Count, lf::BType::Count, lf::BType::Count},
     {lf::BType::Barracks, lf::BType::Camp, lf::BType::Workshop, lf::BType::Count, lf::BType::Count, lf::BType::Count},
 };
-const char* kShopTabNames[4] = {"Оборона", "Свет и стены", "Экономика", "Армия"};
+const char* kShopTabNames[4] = {"Оборона", "Промыслы", "Запасы", "Войско"};
 
 float vrand() {
     static uint32_t seed = 777;
@@ -368,6 +368,7 @@ void App::villageFrame(float dt, const std::vector<input::Event>& worldEvents) {
         case Modal::Workshop: drawWorkshop(); break;
         case Modal::Chat: drawChat(); break;
         case Modal::Clan: drawClan(); break;
+        case Modal::Profile: drawProfile(); break;
         default: break;
     }
     if (modal != Modal::None) gfx::popScale();
@@ -498,6 +499,7 @@ void App::drawVillageHud() {
         ui::icon("icon/star", x + 246, y + 34, 38, lg.color);
         font::draw(std::to_string(S.rating), x + 268, y + 12, 19, 0xffffffffu);
         font::draw(lg.name, x + 268, y + 36, 14, kMuted);
+        if (modal == Modal::None && !placing.active && ui::tapped({x - 4, y - 4, 330, 76})) openModal(Modal::Profile);  // карточка -> профиль
     }
     // под ней — состояние: плотники, войско, набег
     {
@@ -511,8 +513,8 @@ void App::drawVillageHud() {
             x += w + 8;
         };
         auto bl = V::builders(S, tnow);
-        chip("icon/builder", "Строители", std::to_string(bl.free) + "/" + std::to_string(bl.total), bl.free > 0 ? kGold : kBad);
-        chip("icon/army", "Армия", std::to_string(V::armyHousing(S)) + "/" + std::to_string(V::campCapacity(S)), 0xffffffffu);
+        chip("icon/builder", "Плотники", std::to_string(bl.free) + "/" + std::to_string(bl.total), bl.free > 0 ? kGold : kBad);
+        chip("icon/army", "Войско", std::to_string(V::armyHousing(S)) + "/" + std::to_string(V::campCapacity(S)), 0xffffffffu);
     }
     // ── справа сверху: ресурсы с лимитом хранилищ ──
     float rx = cam.w - safeX;
@@ -555,13 +557,7 @@ void App::drawVillageHud() {
         selectedOb = -1;
     }
 
-    auto open = [&](Modal m) {
-        modal = m;
-        audio::play("open", 0.6f);
-        selected = -1;
-        selectedOb = -1;
-        resetArmed = false;
-    };
+    auto open = [&](Modal m) { openModal(m); };
     // ── набег: плашка-таймер под состоянием (касание — окно набега) ──
     {
         bool due = V::nightDue(S, tnow);
@@ -599,7 +595,7 @@ void App::drawVillageHud() {
     if (attack) open(Modal::Map);
     float bx = cam.w - safeX - R - 8;
     if (ui::roundButton(bx, cyB, R, "icon/build", "Строить", ui::Style::Gold, true)) open(Modal::Shop);
-    if (ui::roundButton(bx - R - 58, cyB + 8, 38, "icon/army", "Армия", ui::Style::Normal, true)) open(Modal::Army);
+    if (ui::roundButton(bx - R - 58, cyB + 8, 38, "icon/army", "Войско", ui::Style::Normal, true)) open(Modal::Army);
 }
 
 void App::drawWorkshop() {
@@ -944,9 +940,63 @@ void App::drawShop() {
     }
 }
 
+void App::openModal(Modal m) {
+    modal = m;
+    audio::play("open", 0.6f);
+    selected = -1;
+    selectedOb = -1;
+    resetArmed = false;
+}
+
+void App::drawProfile() {
+    ui::Rect body;
+    if (!modalFrame("Профиль", 760, 500, body)) return;
+    // шапка: уровень, имя, опыт, лига
+    float x = body.x, y = body.y;
+    atlas::drawRect(atlas::get("ui/badge"), x, y, 84, 84);
+    font::draw(std::to_string(S.level), x + 42, y + 22, 30, 0xffffffffu, font::Center);
+    std::string nm = online.ready() && !online.name().empty() ? online.name() : "Приказчик";
+    font::draw(nm, x + 100, y + 6, 24, kInk, font::Left, false);
+    long long need = V::xpToNext(S.level);
+    ui::bar({x + 100, y + 44, 240, 18}, (float)S.xp / need, rgba(110, 210, 255));
+    font::draw("Опыт " + fmtNum(S.xp) + " / " + fmtNum(need), x + 220, y + 43, 14, 0xffffffffu, font::Center);
+    const auto& lg = V::league(S.rating);
+    ui::icon("icon/star", body.x + body.w - 200, y + 34, 54, lg.color);
+    font::draw(std::string("Лига ") + lg.name, body.x + body.w - 168, y + 12, 20, kInk, font::Left, false);
+    font::draw("Рейтинг " + std::to_string(S.rating), body.x + body.w - 168, y + 40, 16, kInkSoft, font::Left, false);
+    // статистика: две колонки карточек
+    struct Row { const char* label; std::string value; };
+    const auto& st = S.stats;
+    std::vector<Row> rows = {
+        {"Острог", "ур. " + std::to_string(V::lanternLevel(S))},
+        {"Походов", fmtNum(st.attacks)},
+        {"Побед в походах", fmtNum(st.wins)},
+        {"Звёзд добыто", fmtNum(st.stars)},
+        {"Острогов разрушено", fmtNum(st.hqsDestroyed)},
+        {"Набегов отбито", fmtNum(st.nightsWon)},
+        {"Набегов не удержали", fmtNum(st.nightsLost)},
+        {"Поставлено построек", fmtNum(st.built)},
+        {"Улучшений", fmtNum(st.upgrades)},
+        {"Обучено воинов", fmtNum(st.trained)},
+        {"Заготовлено леса", fmtNum(st.oreCollected)},
+        {"Намолото хлеба", fmtNum(st.aetherCollected)},
+    };
+    float cy0 = y + 96, rw = (body.w - 12) / 2, rh = 32;
+    for (size_t i = 0; i < rows.size(); i++) {
+        float rx = body.x + (i % 2) * (rw + 12), ry = cy0 + (i / 2) * (rh + 6);
+        atlas::draw9(atlas::get("ui/card_dark"), rx, ry, rw, rh, 40, 10);
+        font::draw(rows[i].label, rx + 14, ry + 8, 15, kInkSoft, font::Left, false);
+        font::draw(rows[i].value, rx + rw - 14, ry + 7, 16, kInk, font::Right, false);
+    }
+    float by = body.y + body.h - 48;
+    if (ui::button({body.x, by, 160, 44}, "Клан", ui::Style::Normal)) openModal(Modal::Clan);
+    if (ui::button({body.x + 172, by, 160, 44}, "Задания", ui::Style::Normal)) openModal(Modal::Tasks);
+    if (ui::button({body.x + 344, by, 160, 44}, "Летопись", ui::Style::Normal)) openModal(Modal::Codex);
+}
+
 void App::drawArmy() {
     ui::Rect body;
-    if (!modalFrame("Армия", 1000, 470, body)) return;
+    if (!modalFrame("Войско", 1000, 470, body)) return;
     long long tnow = now();
     V::tick(S, tnow);
     int cap = V::campCapacity(S), have = V::armyHousing(S), q = V::queueHousing(S);
@@ -1081,7 +1131,7 @@ void App::drawMap() {
                 font::draw("Сначала поход " + std::to_string(i), cx + 12, cy + ch - 30, 14, kInkSoft, font::Left, false);
             }
             if (ui::tapped(r) && open) {
-                if (V::armyHousing(S) == 0) { toast("Армия пуста — обучи войска", kBad); continue; }
+                if (V::armyHousing(S) == 0) { toast("Войско пусто — обучи воинов в ратной избе", kBad); continue; }
                 modal = Modal::None;
                 int idx = (int)i;
                 dialogue(ms[i].intro, [this, idx] { startMission(idx); });
@@ -1111,7 +1161,7 @@ void App::drawMap() {
                    body.x + 60, y + 32, 13, kInkSoft, font::Left, false);
         ui::Rect br{body.x + body.w / 2 - 150, body.y + body.h - 70, 300, 56};
         if (ui::button(br, "", ui::Style::Gold)) {
-            if (V::armyHousing(S) == 0) toast("Армия пуста — обучи войска", kBad);
+            if (V::armyHousing(S) == 0) toast("Войско пусто — обучи воинов в ратной избе", kBad);
             else if (S.ore < cost) toast("Не хватает леса на сборы в поход", kBad);
             else { S.ore -= cost; modal = Modal::None; startRaid(); }
         }
@@ -1182,10 +1232,10 @@ void App::drawMenu() {
     row("Аккаунт", online.ready() ? online.name() + " · ID " + std::to_string(online.playerId()) : online.enabled() ? "подключение…" : "игра без сервера");
     y += 76;
     // статистика плитками
-    font::draw("Летопись", body.x + 4, y, 18, kInk, font::Left, false);
+    font::draw("Итоги", body.x + 4, y, 18, kInk, font::Left, false);
     y += 30;
-    struct St { const char* name; int v; } st[4] = {{"Набегов", S.stats.attacks}, {"Побед", S.stats.wins}, {"Ночей выстояли", S.stats.nightsWon},
-                                                   {"Ночей пали", S.stats.nightsLost}};
+    struct St { const char* name; int v; } st[4] = {{"Походов", S.stats.attacks}, {"Побед", S.stats.wins}, {"Набегов отбито", S.stats.nightsWon},
+                                                   {"Набегов не удержали", S.stats.nightsLost}};
     float sw = (body.w - 3 * 10) / 4;
     for (int i = 0; i < 4; i++) {
         float sx = body.x + i * (sw + 10);
@@ -1196,7 +1246,7 @@ void App::drawMenu() {
     // низ: версия (5 касаний — режим разработчика) и сброс
     float by = body.y + body.h - 46;
     ui::Rect ver{body.x, by + 8, 200, 32};
-    font::draw("Lanternfall 0.4", ver.x + 4, ver.y + 6, 14, kInkSoft, font::Left, false);
+    font::draw("Острог 0.5", ver.x + 4, ver.y + 6, 14, kInkSoft, font::Left, false);
     if (ui::tapped(ver)) devTaps++;
     if (devTaps >= 5 && ui::button({body.x + 170, by, 190, 44}, "Казна (тест)", ui::Style::Normal, true, 15)) {
         V::addRes(S, lf::Res::Ore, 1000000000);

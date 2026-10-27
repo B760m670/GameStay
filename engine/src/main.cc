@@ -51,6 +51,7 @@ void init() {
     else if (opt.modal == "map") app.modal = M::Map;
     else if (opt.modal == "night") app.modal = M::Night;
     else if (opt.modal == "codex") app.modal = M::Codex;
+    else if (opt.modal == "profile") app.modal = M::Profile;
     else if (opt.modal == "menu") app.modal = M::Menu;
     else if (opt.modal == "info") app.modal = M::Info;
     else if (opt.modal == "tasks") app.modal = M::Tasks;

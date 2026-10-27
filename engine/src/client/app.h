@@ -17,7 +17,7 @@
 namespace client {
 
 enum class Scene { Village, Battle };
-enum class Modal { None, Shop, Army, Map, Night, Codex, Menu, Result, Info, Tasks, Workshop, Chat, Clan };
+enum class Modal { None, Shop, Army, Map, Night, Codex, Menu, Result, Info, Tasks, Workshop, Chat, Clan, Profile };
 enum class BattleKind { Raid, Mission, Night };
 
 constexpr float kVirtualH = 560.f;  // высота экрана в единицах вёрстки (на телефоне 1 ед. ≈ 0.7 pt)
@@ -136,6 +136,8 @@ private:
     void submitOnlineRaid();
     void drawChat();
     void drawClan();
+    void drawProfile();  // профиль игрока: уровень, рейтинг, лига, вся статистика
+    void openModal(Modal m);
     void refreshClan();
     bool onlineOffline(const ui::Rect& body);  // true — онлайн недоступен (нарисована заглушка)
     static int utf8Len(const std::string& s);
