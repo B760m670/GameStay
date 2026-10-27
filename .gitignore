@@ -16,3 +16,4 @@ server/lanternfall-server
 *.db-shm
 engine/build-web/
 art/source/polyhaven/
+art/source/makehuman/

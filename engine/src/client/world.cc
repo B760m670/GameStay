@@ -66,6 +66,20 @@ const atlas::Sprite* buildingSprite(lf::BType type, int level) {
     return atlas::get(std::string("b/") + def.id);
 }
 
+int wallLinks(const std::vector<uint8_t>& wallAt, int x, int y) {
+    auto at = [&](int i, int j) { return i >= 0 && j >= 0 && i < lf::kGrid && j < lf::kGrid && wallAt[j * lf::kGrid + i]; };
+    return (at(x + 1, y) ? 1 : 0) | (at(x, y + 1) ? 2 : 0);
+}
+
+namespace {
+// Звенья частокола (wall_t<k>_post/_x/_y) — если есть, рисуются вместо цельного спрайта клетки.
+const atlas::Sprite* wallPiece(int level, const char* part) {
+    const auto& def = lf::B(lf::BType::Wall);
+    int tier = std::clamp((std::max(1, level) - 1) * 3 / std::max(1, def.maxLevel) + 1, 1, 3);
+    return atlas::get("b/wall_t" + std::to_string(tier) + "_" + part);
+}
+}  // namespace
+
 namespace {
 // Поворотная часть (Самострел, Пушка): спрайты _d0.._d7 — поворот на 45° против часовой (вид сверху в Blender).
 // kTurretBase — угол в Blender, куда смотрит _d0; мировой угол a соответствует углу -a в Blender.
@@ -411,6 +425,8 @@ void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level
     }
     const atlas::Sprite* sp = buildingSprite(type, level);
     if (const atlas::Sprite* ts = turretSprite(type, level, look.angle)) sp = ts;
+    const atlas::Sprite* post = type == lf::BType::Wall ? wallPiece(level, "post") : nullptr;
+    if (post) sp = post;
     if (look.dead) {
         drawFootprint(cam, x + 0.1f, y + 0.1f, s - 0.2f, rgba(30, 24, 30, 150));
         uint32_t h = hash2((int)x * 7, (int)y * 13);
@@ -440,7 +456,11 @@ void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level
     if (look.hitFlash > 0) c.x += std::sin(t * 90) * look.hitFlash * 6 * cam.zoom;
     bool popping = look.pop >= 0 && look.pop < 1;
     if (popping) gfx::pushScale(c.x, c.y, 1 + 0.13f * std::sin(look.pop * 9.42f) * (1 - look.pop));  // затухающая пружина от основания
-    if (sp) {
+    if (sp && post) {  // частокол: столб и звенья к соседним клеткам
+        atlas::draw(sp, c.x, c.y, cam.zoom * 0.5f, col);
+        if (look.links & 1) if (const atlas::Sprite* w = wallPiece(level, "x")) atlas::draw(w, c.x, c.y, cam.zoom * 0.5f, col);
+        if (look.links & 2) if (const atlas::Sprite* w = wallPiece(level, "y")) atlas::draw(w, c.x, c.y, cam.zoom * 0.5f, col);
+    } else if (sp) {
         atlas::draw(sp, c.x, c.y, cam.zoom * 0.5f, col);
     } else {
         drawFootprint(cam, x + 0.1f, y + 0.1f, s - 0.2f, rgba(140, 120, 100, 220));

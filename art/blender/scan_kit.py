@@ -14,6 +14,7 @@ from mathutils import Matrix, Vector
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "source", "polyhaven")
 
 _LIB = {}  # имя ассета -> {имя части: объект-образец}
+_ORIG = {}  # имя части -> её матрица в исходной сборке glTF
 
 
 def _library(asset):
@@ -32,6 +33,7 @@ def _library(asset):
             c.objects.unlink(o)
         lib.objects.link(o)
         o.hide_render = True
+        _ORIG[o.name] = o.matrix_world.copy()  # исходное положение части в сборке (для place_group)
         o.parent = None
         o.matrix_world = Matrix.Identity(4)
     parts = {o.name: o for o in new if o.type == "MESH"}
@@ -41,6 +43,7 @@ def _library(asset):
 
 def reset():
     _LIB.clear()
+    _ORIG.clear()
 
 
 def place(asset, part, loc, scale=1.0, rot_z=0.0, tilt=(0.0, 0.0), ground=True):
@@ -70,6 +73,9 @@ def pbr(asset, tile_m=1.0, name=None):
         return bpy.data.materials[name]
     tex_dir = os.path.join(ROOT, asset, "textures")
     files = {f.split(asset + "_")[1].rsplit("_", 1)[0]: os.path.join(tex_dir, f) for f in os.listdir(tex_dir)}
+    for alias in ("albedo", "col"):  # у части ассетов карта цвета названа иначе
+        if alias in files and "diff" not in files:
+            files["diff"] = files[alias]
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     N, L = m.node_tree.nodes, m.node_tree.links
@@ -314,7 +320,7 @@ def log(p0, p1, r, mat, seed, r_end=None, sag=0.01, ends=True, segs=14, name="lo
     """Бревно от p0 до p1 радиусом r (у вершинного конца r_end): слегка неровное и кривое, кора снята.
     Волокна текстуры идут вдоль бревна; торцы — кольца (end_grain_mat)."""
     rnd = random.Random(seed)
-    asset = mat["grain"]
+    asset = mat.get("grain", "wood_planks_grey")  # у не-древесных материалов UV всё равно нужна
     u0, uw, len_m, v0 = _uv_strip(asset, rnd)
     p0, p1 = Vector(p0), Vector(p1)
     axis = p1 - p0
@@ -370,7 +376,7 @@ def log(p0, p1, r, mat, seed, r_end=None, sag=0.01, ends=True, segs=14, name="lo
 def board(size, matrix, mat, seed, name="board"):
     """Доска size=(длина по X, ширина по Y, толщина по Z) с волокнами вдоль длины; matrix — положение и поворот."""
     rnd = random.Random(seed)
-    asset = mat["grain"]
+    asset = mat.get("grain", "wood_planks_grey")  # у не-древесных материалов UV всё равно нужна
     u0, uw, len_m, v0 = _uv_strip(asset, rnd)
     sx, sy, sz = size
     bm = bmesh.new()
@@ -436,9 +442,8 @@ def place_group(asset, loc, scale=1.0, rot_z=0.0, parts=None):
         o = src.copy()
         bpy.context.scene.collection.objects.link(o)
         o.hide_render = False
-        o.rotation_euler = (0, 0, rot_z)
-        o.scale = (scale, scale, scale)
-        o.location = loc
+        o.matrix_world = (Matrix.Translation(loc) @ Matrix.Rotation(rot_z, 4, "Z") @ Matrix.Diagonal((scale, scale, scale, 1))
+                          @ _ORIG.get(n, Matrix.Identity(4)))
         objs.append(o)
     bpy.context.view_layer.update()
     zmin = min((o.matrix_world @ Vector(c)).z for o in objs for c in o.bound_box)

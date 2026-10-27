@@ -11,6 +11,8 @@ namespace atlas { struct Sprite; }
 namespace client::world {
 
 const atlas::Sprite* buildingSprite(lf::BType type, int level);
+// Частокол по клеткам: links для клетки (x, y) — есть ли звенья к соседям по +X и +Y.
+int wallLinks(const std::vector<uint8_t>& wallAt, int x, int y);
 
 constexpr int kPad = 9;  // сколько клеток мира рисуем за краем игрового поля (лес, скалы)
 void drawGround(const Camera& cam);
@@ -39,6 +41,7 @@ struct BuildingLook {
     float collapse = -1;           // 0..1 — идёт обрушение разрушенной постройки
     float angle = 0.785f;          // куда смотрит поворотная часть (мировой угол), по умолчанию — к зрителю
     float pop = -1;                // 0..1 — «пружина» (выбор, установка, завершение стройки)
+    int links = 0;                 // частокол: 1 — сосед по +X, 2 — сосед по +Y (рисуются звенья к ним)
 };
 void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level, const BuildingLook& look, float t);
 void drawFootprint(const Camera& cam, float x, float y, float size, uint32_t color);

@@ -406,6 +406,8 @@ void App::drawVillageWorld() {
         items.push_back({1e9f, &ghost, true});
     }
     std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) { return a.depth < b.depth; });
+    std::vector<uint8_t> wallAt(lf::kGrid * lf::kGrid, 0);  // звенья частокола соединяются с соседними клетками
+    for (const auto& b : view.buildings) if (b.type == lf::BType::Wall) wallAt[b.y * lf::kGrid + b.x] = 1;
     long long tnow = now();
     for (const auto& it : items) {
         if (it.d) { world::drawDecor(cam, *it.d, t); continue; }
@@ -437,6 +439,7 @@ void App::drawVillageWorld() {
         look.constructing = b.level == 0 && !ruins;
         if (it.ghost || (placing.active && b.id == placing.moveId)) { look.ghost = placing.valid ? 1 : -1; look.alpha = 0.85f; }
         if (auto it = popAt.find(b.id); it != popAt.end()) look.pop = (t - it->second) / 0.55f;
+        if (b.type == lf::BType::Wall) look.links = world::wallLinks(wallAt, b.x, b.y);
         world::drawBuilding(cam, b.type, (float)b.x, (float)b.y, ruins ? 0 : std::max(1, b.level), look, t);
     }
     for (const auto& p : particles) if (!p.additive) world::drawParticle(cam, p);

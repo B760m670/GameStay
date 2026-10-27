@@ -254,6 +254,8 @@ void App::drawBattleWorld() {
         items.push_back({B.troops[i].x + B.troops[i].y + (B.troops[i].air && !dead ? 3.f : 0.f) - (dead ? 0.5f : 0.f), 1, (int)i});
     }
     std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) { return a.depth < b.depth; });
+    std::vector<uint8_t> wallAt(lf::kGrid * lf::kGrid, 0);  // живые звенья частокола — для соединения соседних клеток
+    for (const auto& b : B.buildings) if (b.isWall() && !b.dead) wallAt[b.y * lf::kGrid + b.x] = 1;
     for (const auto& it : items) {
         if (it.kind == 2) { world::drawDecor(cam, dec[it.idx], t); continue; }
         if (it.kind == 0) {
@@ -262,6 +264,7 @@ void App::drawBattleWorld() {
             look.dead = b.dead;
             look.hitFlash = b.hitT;
             look.angle = b.angle;
+            if (b.isWall()) look.links = world::wallLinks(wallAt, b.x, b.y);
             if (b.dead && it.idx < (int)bt.bDeadT.size()) look.collapse = std::min(1.f, bt.bDeadT[it.idx] / 0.7f);
             world::drawBuilding(cam, b.type, (float)b.x, (float)b.y, b.level, look, t);
         } else {

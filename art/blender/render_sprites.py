@@ -62,7 +62,7 @@ def reset_scene(samples):
         ld = bpy.data.lights.new(name, "SUN")
         ld.energy = energy
         ld.color = color
-        ld.cycles.cast_shadow = False
+        ld.use_shadow = False  # только солнце даёт тень
         lo = bpy.data.objects.new(name, ld)
         lo.rotation_euler = rot
         sc.collection.objects.link(lo)
