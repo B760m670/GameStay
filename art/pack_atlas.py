@@ -82,6 +82,9 @@ for png in (sorted(glob.glob(os.path.join(SRC, "ui", "*.png"))) if os.environ.ge
     rgb = ImageEnhance.Contrast(ImageEnhance.Color(im.convert("RGB")).enhance(1.25)).enhance(1.06)
     rgb.putalpha(im.getchannel("A"))
     UI3D["ui/" + os.path.basename(png)[:-4]] = outlined(rgb, width=3)
+# объёмный набор из Blender (art/blender/model_ui.py): рамки, кнопки, медальоны — заменяет процедурный
+for png in sorted(glob.glob(os.path.join(SRC, "ui3d", "*.png"))):
+    UI3D["ui/" + os.path.basename(png)[:-4]] = Image.open(png).convert("RGBA")
 for extra in ("badge", "shelf", "round_red"):  # новые элементы, которых нет в процедурном наборе
     if "ui/" + extra in UI3D:
         add("ui/" + extra, UI3D["ui/" + extra])
@@ -89,8 +92,6 @@ for extra in ("badge", "shelf", "round_red"):  # новые элементы, к
 ICON3D = {}
 for png in sorted(glob.glob(os.path.join(SRC, "icons", "*.png"))):
     name = os.path.basename(png)[:-4]
-    if name == "army":
-        continue  # армию обозначает меч (рисуется ниже), а не молот
     ICON3D[name] = outlined(Image.open(png))
 
 # ---------- земля ----------
