@@ -9,7 +9,7 @@ namespace lf::replay {
 bool apply(Battle& B, const Action& a) {
     switch (a.kind) {
         case Act::Deploy: return B.deploy((TroopType)a.arg, a.x, a.y);
-        case Act::Eclipse: return B.castEclipse(a.x, a.y);
+        case Act::Reserved: return false;
         case Act::Spell: return B.castSpell((Spell)a.arg, a.x, a.y);
         case Act::Hero: return B.deployHero(a.x, a.y);
         case Act::HeroAbility: return B.heroAbility();
@@ -31,7 +31,7 @@ std::string save(const Record& r) {
     o.precision(9);
     const auto& op = r.opts;
     o << "replay 1\n";
-    o << "opts " << (int)op.mode << " " << op.seed << " " << op.duration << " " << op.hazeMult << " " << op.eclipseCharges << " " << op.heroLevel << "\n";
+    o << "opts " << (int)op.mode << " " << op.seed << " " << op.duration << " " << op.raidMult << " " << 0 << " " << op.heroLevel << "\n";
     for (const auto& it : op.layout)
         o << "b " << (int)it.type << " " << it.x << " " << it.y << " " << it.level << " " << it.id << " " << it.lootOre << " " << it.lootAether << "\n";
     for (auto [t, n] : op.army) o << "army " << (int)t << " " << n << "\n";
@@ -58,8 +58,8 @@ bool load(const std::string& s, Record& r) {
         l >> k;
         if (k == "replay") ok = true;
         else if (k == "opts") {
-            int mode;
-            l >> mode >> r.opts.seed >> r.opts.duration >> r.opts.hazeMult >> r.opts.eclipseCharges >> r.opts.heroLevel;
+            int mode, reserved;  // reserved — бывшие заряды «Затмения», формат записи сохранён
+            l >> mode >> r.opts.seed >> r.opts.duration >> r.opts.raidMult >> reserved >> r.opts.heroLevel;
             r.opts.mode = (BattleMode)mode;
         } else if (k == "b") {
             LayoutItem it;

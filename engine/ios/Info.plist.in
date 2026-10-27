@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>ru</string>
-    <key>CFBundleDisplayName</key><string>Lanternfall</string>
+    <key>CFBundleDisplayName</key><string>Острог</string>
     <key>CFBundleExecutable</key><string>Lanternfall</string>
     <key>CFBundleIdentifier</key><string>com.gamestay.lanternfall</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>

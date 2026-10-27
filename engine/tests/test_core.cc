@@ -54,10 +54,12 @@ TEST(start_village_valid) {
     }
 }
 
-TEST(no_building_in_darkness) {
+TEST(build_anywhere_on_clearing) {
     auto S = testVillage(0);
-    CHECK(!village::canPlace(S, BType::Wall, 3, 3).ok, "");
-    CHECK(village::canPlace(S, BType::Wall, 19, 19).ok, "");
+    S.obstacles.clear();
+    CHECK(village::canPlace(S, BType::Wall, 3, 3).ok, "far corner of the clearing is fine");
+    CHECK(!village::canPlace(S, BType::Wall, 1, 1).ok, "border");
+    CHECK(!village::canPlace(S, BType::Wall, 21, 21).ok, "occupied by the fort");
 }
 
 TEST(build_upgrade_collect) {
@@ -98,15 +100,12 @@ TEST(basegen_valid_all_levels) {
         for (int seed = 1; seed <= 5; seed++) {
             auto layout = basegen::generate(LL, seed);
             std::set<int> occ;
-            std::vector<LightSource> src;
-            for (auto& b : layout)
-                if (B(b.type).isLight()) src.push_back({b.x + B(b.type).size / 2.f, b.y + B(b.type).size / 2.f, B(b.type).lv(B(b.type).light, b.level), b.id});
             bool hasLantern = false;
             for (auto& b : layout) {
                 int s = B(b.type).size;
                 for (int j = b.y; j < b.y + s; j++)
                     for (int i = b.x; i < b.x + s; i++) CHECK(occ.insert(j * kGrid + i).second, "overlap LL%d seed%d %s", LL, seed, B(b.type).id);
-                CHECK(isLit(b.x + s / 2.f, b.y + s / 2.f, src), "unlit %s LL%d", B(b.type).id, LL);
+                CHECK(b.x >= kBorder && b.y >= kBorder && b.x + s <= kGrid - kBorder && b.y + s <= kGrid - kBorder, "outside %s", B(b.type).id);
                 CHECK(b.level >= 1 && b.level <= B(b.type).maxLevel, "");
                 hasLantern |= b.type == BType::Lantern;
             }
@@ -114,13 +113,15 @@ TEST(basegen_valid_all_levels) {
         }
 }
 
-TEST(deploy_only_in_darkness) {
+TEST(deploy_on_open_ground_only) {
     BattleOptions o;
     o.layout = basegen::generate(2, 3);
     o.army[TroopType::Torch] = 5;
     Battle B(o);
-    CHECK(!B.canDeploy(22, 22), "");
+    CHECK(!B.canDeploy(22, 22), "on the fort");
     CHECK(B.canDeploy(1, 1), "");
+    const auto& hq = B.buildings[0];
+    CHECK(!B.canDeploy(hq.x - 0.5f, hq.y + 0.5f), "right next to a building");
     CHECK(B.deploy(TroopType::Torch, 1, 1), "");
 }
 
@@ -167,7 +168,7 @@ TEST(first_night_survivable) {
         o.mode = BattleMode::Defense;
         o.layout = village::layout(S);
         o.waves = n.waves;
-        o.hazeMult = n.hazeMult;
+        o.raidMult = n.raidMult;
         o.duration = kNightTime;
         o.seed = seed;
         Battle B(o);
@@ -176,18 +177,38 @@ TEST(first_night_survivable) {
     CHECK(wins >= 4, "wins=%d", wins);
 }
 
-TEST(beacons_power_defenses) {
+TEST(ram_breaks_palisade_rider_hits_economy) {
     BattleOptions o;
-    o.layout = basegen::generate(4, 2);
+    o.layout = basegen::generate(3, 4);
     Battle B(o);
-    int powered = 0, beacons = 0;
-    for (auto& b : B.buildings) { powered += b.isDefense() && b.powered; beacons += b.type == BType::Beacon; }
-    CHECK(beacons > 0 && powered > 0, "");
-    for (auto& b : B.buildings) if (b.isLight()) b.dead = true;
-    B.relight();
-    int after = 0;
-    for (auto& b : B.buildings) after += b.isDefense() && b.powered;
-    CHECK(after == 0, "after=%d", after);
+    int wall = -1, mill = -1;
+    for (size_t i = 0; i < B.buildings.size(); i++) {
+        if (B.buildings[i].isWall() && wall < 0) wall = (int)i;
+        if (B.buildings[i].type == BType::AetherWell && mill < 0) mill = (int)i;
+    }
+    CHECK(wall >= 0 && mill >= 0, "");
+    // таран: удар по частоколу в разы сильнее обычного
+    int ram = B.troops.size();
+    B.troops.push_back({});
+    B.troops[ram].def = &T(TroopType::Sapper);
+    B.troops[ram].type = TroopType::Sapper;
+    B.troops[ram].hp = B.troops[ram].maxHp = 400;
+    float before = B.buildings[wall].hp;
+    B.troops[ram].x = B.buildings[wall].cx + 0.6f;
+    B.troops[ram].y = B.buildings[wall].cy;
+    for (int k = 0; k < 3 && !B.buildings[wall].dead; k++) { B.troops[ram].cd = 0; B.step(0.0f); B.troops[ram].target = wall; }
+    float wallHit = before - B.buildings[wall].hp;
+    CHECK(wallHit >= T(TroopType::Sapper).dmg * 9 || B.buildings[wall].dead, "ram hit=%f", wallHit);
+    // всадник выбирает хозяйство
+    BTroop r{};
+    r.def = &T(TroopType::Shade);
+    r.type = TroopType::Shade;
+    r.hp = r.maxHp = 260;
+    r.x = 1; r.y = 1;
+    B.troops.push_back(r);
+    B.step(1.f / 30);
+    int tgt = B.troops.back().target;
+    CHECK(tgt >= 0 && B.buildings[tgt].isEconomy(), "rider target is economy");
 }
 
 TEST(campaign_generates) {
@@ -299,7 +320,7 @@ TEST(trap_triggers_and_not_counted) {
     CHECK(traps > 0, "");
 }
 
-TEST(hero_deploy_flash_and_upgrade) {
+TEST(hero_deploy_cry_and_upgrade) {
     BattleOptions o;
     o.layout = basegen::generate(2, 5);
     o.heroLevel = 3;
@@ -308,14 +329,15 @@ TEST(hero_deploy_flash_and_upgrade) {
     CHECK(B.deployHero(1, 1), "");
     CHECK(!B.deployHero(1.5f, 1), "only once");
     CHECK(B.troops[B.heroIdx].maxHp > T(TroopType::Hero).hp * 1.15f, "level scales hp");
-    // подвести героя к обороне и ослепить её
-    int def = -1;
-    for (size_t i = 0; i < B.buildings.size(); i++) if (B.buildings[i].isDefense() && !B.buildings[i].isTrap()) def = (int)i;
-    CHECK(def >= 0, "");
-    B.troops[B.heroIdx].x = B.buildings[def].cx + 1;
-    B.troops[B.heroIdx].y = B.buildings[def].cy;
+    // боевой клич: раненый ополченец рядом подлечивается и свирепеет
+    o.army[TroopType::Torch] = 1;
+    Battle C(o);
+    CHECK(C.deployHero(1, 1) && C.deploy(TroopType::Torch, 1.5f, 1.2f), "");
+    BTroop& m = C.troops.back();
+    m.hp = m.maxHp * 0.3f;
+    CHECK(C.heroAbility(), "");
+    CHECK(m.hp > m.maxHp * 0.6f && m.rageT > 0, "hp=%f rage=%f", m.hp, m.rageT);
     CHECK(B.heroAbility(), "");
-    CHECK(B.buildings[def].stunT > 0, "stunned");
     CHECK(!B.heroAbility(), "once per battle");
     // прокачка в деревне
     auto S = testVillage(0);
@@ -335,7 +357,6 @@ TEST(replay_restores_battle_exactly) {
     rec.opts.army[TroopType::Archer] = 10;
     rec.opts.spells[Spell::Rage] = 1;
     rec.opts.heroLevel = 2;
-    rec.opts.eclipseCharges = 1;
     rec.opts.seed = 9;
     const float dt = 1.f / 30;
     Battle live(rec.opts);
@@ -348,7 +369,6 @@ TEST(replay_restores_battle_exactly) {
         if (s == 30) act(replay::Act::Hero, 0, 2.f, 1.f);
         if (s == 90) act(replay::Act::Spell, (int)Spell::Rage, 6.f, 6.f);
         if (s == 120) act(replay::Act::HeroAbility, 0, 0, 0);
-        if (s == 150) act(replay::Act::Eclipse, 0, 20.f, 20.f);
         live.step(dt);
         rec.steps++;
     }

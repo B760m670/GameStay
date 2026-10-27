@@ -86,7 +86,6 @@ char* lf_verify_attack(const char* attackerSave, const char* snapshot, const cha
     for (auto [sp, n] : o.spells)
         if (n > (allowed.count(sp) ? allowed[sp] : 0)) { setErr(error, "spell charges exceed level"); return nullptr; }
     if (o.heroLevel != 0 && (!village::heroUnlocked(S) || o.heroLevel != S.heroLevel)) { setErr(error, "hero mismatch"); return nullptr; }
-    if (o.eclipseCharges > eclipseCharges(village::lanternLevel(S))) { setErr(error, "eclipse charges exceed lantern"); return nullptr; }
     const float dt = 1.f / 30.f;
     if (rec.steps < 0 || rec.steps > (int)(kBattleTime / dt) + 2) { setErr(error, "too many steps"); return nullptr; }
     for (size_t i = 1; i < rec.actions.size(); i++)
@@ -94,9 +93,7 @@ char* lf_verify_attack(const char* attackerSave, const char* snapshot, const cha
     Battle B(o);
     replay::fastForward(B, rec, dt);
     if (!B.ended) B.finish();
-    int beacons = 0;
-    for (const auto& b : B.buildings) beacons += b.dead && b.type == BType::Beacon;
-    auto out = village::applyRaid(S, B.result, beacons);
+    auto out = village::applyRaid(S, B.result);
     if (attackerOut) *attackerOut = dup(village::save(S));
     std::ostringstream res;
     res << "stars " << B.result.stars << "\npct " << B.result.pct << "\nore " << B.result.lootOre << "\naether " << B.result.lootAether
@@ -132,7 +129,6 @@ char* lf_auto_replay(const char* attackerSave, const char* snapshot, int seed, l
     }
     rec.opts.spells = village::spellCharges(S.level);
     rec.opts.heroLevel = village::heroUnlocked(S) ? S.heroLevel : 0;
-    rec.opts.eclipseCharges = eclipseCharges(village::lanternLevel(S));
     Battle B(rec.opts);
     int k = 0;
     for (auto [t, n] : rec.opts.army)

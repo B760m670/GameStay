@@ -14,11 +14,8 @@ using gfx::rgba;
 namespace {
 constexpr float kSqrt2 = 1.41421356f;
 
-// Свет на карте (кэш последнего drawFog): 0 — тьма, 1 — полный свет.
-constexpr int kLM = lf::kGrid + 2 * kPad + 1;
-float gLight[kLM * kLM];
-float gDark = 0.74f;
-bool gLightValid = false;
+// Общий оттенок освещения сцены (день — белый, сумерки набега — тёплый и тусклый).
+uint32_t gAmbient = 0xffffffffu;
 
 uint32_t hash2(int x, int y) {
     uint32_t h = (uint32_t)x * 374761393u + (uint32_t)y * 668265263u;
@@ -70,7 +67,7 @@ const atlas::Sprite* buildingSprite(lf::BType type, int level) {
 }
 
 namespace {
-// Поворотная часть (Арбалет, Катапульта): спрайты _d0.._d7 — поворот на 45° против часовой (вид сверху в Blender).
+// Поворотная часть (Самострел, Пушка): спрайты _d0.._d7 — поворот на 45° против часовой (вид сверху в Blender).
 // kTurretBase — угол в Blender, куда смотрит _d0; мировой угол a соответствует углу -a в Blender.
 constexpr float kTurretBase = 0.f;
 const atlas::Sprite* turretSprite(lf::BType type, int level, float angle) {
@@ -202,7 +199,7 @@ void drawMeadow(const Camera& cam, float t) {
         float shear = (gust * gust * 0.22f + std::sin(t * 5 + d.x * 3) * 0.03f);
         drawSway(d.sp, p.x, p.y, cam.zoom * 0.4f, shear, 0xffffffffu);
     }
-    // бабочки у Фонаря
+    // бабочки над лугом
     static const uint32_t wings[] = {rgba(255, 220, 90), rgba(250, 250, 240), rgba(255, 150, 70), rgba(170, 200, 255)};
     for (int i = 0; i < 7; i++) {
         float ph = i * 1.9f;
@@ -323,95 +320,14 @@ void drawDecor(const Camera& cam, const Decor& d, float t) {
     if (c.x < -200 || c.x > cam.w + 200 || c.y < -60 || c.y > cam.h + 300) return;
     const atlas::Sprite* sp = atlas::get(d.sprite);
     if (d.fx == 2) c.y += std::sin(t * 1.3f + cx) * 1.2f * cam.zoom;  // кувшинка покачивается
-    // за краем поля — во Мгле: холодный приглушённый свет
-    uint32_t col = lightTint(cx, cy, rgba(215, 215, 225));
+    uint32_t col = ambientTint(rgba(235, 235, 235));
     if (d.fx == 1) col = rgba(255, 235, 210);
     atlas::draw(sp, c.x, c.y, cam.zoom * 0.5f, col);
-    if (d.fx == 1) {  // костёр: свой тёплый свет посреди тьмы
+    if (d.fx == 1) {  // костёр: тёплый отсвет
         float fl = 0.85f + 0.15f * std::sin(t * 9) * std::sin(t * 5.3f);
         float r = 3.2f * kTW * cam.zoom / kSqrt2 * fl;
         ellipseSprite("fx/glow", c.x, c.y, r, r / 2, rgba(255, 150, 60, 70), true);
         glowAt(c.x, c.y - 10 * cam.zoom, 16 * cam.zoom * fl, rgba(255, 190, 90, 220));
-    }
-}
-
-void drawFog(const Camera& cam, const std::vector<lf::LightSource>& src, const std::vector<lf::Eclipse>& ecl, float t, float darkness,
-             bool forbidTint) {
-    constexpr int M = lf::kGrid + 2 * kPad;  // клеток по стороне вместе с краем
-    constexpr int N = M + 1;
-    static float L[N * N];
-    for (int jj = 0; jj < N; jj++)
-        for (int ii = 0; ii < N; ii++) {
-            float i = (float)(ii - kPad), j = (float)(jj - kPad);
-            float best = 0;
-            for (const auto& s : src) {
-                float d = std::hypot(i - s.x, j - s.y);
-                best = std::max(best, 1.f - smoothstep(s.r - 1.4f, s.r + 0.7f, d));
-            }
-            for (const auto& e : ecl) {
-                float d = std::hypot(i - e.x, j - e.y);
-                best *= smoothstep(e.r - 1.2f, e.r + 0.3f, d);
-            }
-            L[jj * N + ii] = best;
-        }
-    std::copy(L, L + N * N, gLight);
-    gDark = darkness;
-    gLightValid = true;
-    const uint32_t fog = rgba(78, 44, 150), red = rgba(150, 20, 30);  // Мгла: глубокий фиолетовый, а не чернота
-    for (int jj = 0; jj < M; jj++)
-        for (int ii = 0; ii < M; ii++) {
-            float i = (float)(ii - kPad), j = (float)(jj - kPad);
-            Vec2 a = cam.toScreen(i, j), b = cam.toScreen(i + 1.f, j), c = cam.toScreen(i + 1.f, j + 1.f), d = cam.toScreen(i, j + 1.f);
-            if (b.x < 0 || d.x > cam.w || a.y > cam.h || c.y < 0) continue;
-            float la = L[jj * N + ii], lb = L[jj * N + ii + 1], lc = L[(jj + 1) * N + ii + 1], ld = L[(jj + 1) * N + ii];
-            if (la > 0.999f && lb > 0.999f && lc > 0.999f && ld > 0.999f && !forbidTint) continue;
-            auto col = [&](float l) {
-                if (forbidTint && l > 0.5f) return gfx::withAlpha(red, 0.22f * l);
-                return gfx::withAlpha(fog, darkness * (1 - l));
-            };
-            gfx::Vtx v[4] = {{a.x, a.y, 0, 0, col(la)}, {b.x, b.y, 0, 0, col(lb)}, {c.x, c.y, 0, 0, col(lc)}, {d.x, d.y, 0, 0, col(ld)}};
-            gfx::quad(gfx::white(), v);
-        }
-    // золотая кромка по границе света: видно, где можно строить
-    gfx::setBlend(gfx::Blend::Add);
-    for (int jj = 0; jj < M; jj++)
-        for (int ii = 0; ii < M; ii++) {
-            float la = L[jj * N + ii], lb = L[jj * N + ii + 1], lc = L[(jj + 1) * N + ii + 1], ld = L[(jj + 1) * N + ii];
-            float lo = std::min({la, lb, lc, ld}), hi = std::max({la, lb, lc, ld});
-            if (hi < 0.15f || lo > 0.85f) continue;
-            float i = (float)(ii - kPad), j = (float)(jj - kPad);
-            Vec2 a = cam.toScreen(i, j), b = cam.toScreen(i + 1.f, j), c = cam.toScreen(i + 1.f, j + 1.f), d = cam.toScreen(i, j + 1.f);
-            if (b.x < 0 || d.x > cam.w || a.y > cam.h || c.y < 0) continue;
-            float pulse = 0.8f + 0.2f * std::sin(t * 2 + i * 0.3f + j * 0.2f);
-            auto rim = [&](float l) {
-                float k = 1 - std::min(1.f, std::fabs(l - 0.5f) * 2.4f);
-                return rgba(255, 190, 80, (int)(90 * k * k * pulse));
-            };
-            gfx::Vtx v[4] = {{a.x, a.y, 0, 0, rim(la)}, {b.x, b.y, 0, 0, rim(lb)}, {c.x, c.y, 0, 0, rim(lc)}, {d.x, d.y, 0, 0, rim(ld)}};
-            gfx::quad(gfx::white(), v);
-        }
-    gfx::setBlend(gfx::Blend::Alpha);
-    // тёплое свечение света
-    for (const auto& s : src) {
-        Vec2 p = cam.toScreen(s.x, s.y);
-        float flick = 1 + std::sin(t * 3 + s.x) * 0.015f;
-        float rx = s.r * kTW * cam.zoom / kSqrt2 * flick;
-        ellipseSprite("fx/glow", p.x, p.y, rx, rx / 2, rgba(255, 170, 70, 46), true);
-        ellipseSprite("fx/glow", p.x, p.y, rx * 0.35f, rx * 0.175f, rgba(255, 200, 120, (int)(40 + 14 * std::sin(t * 7 + s.y))), true);
-    }
-    // клубы Мглы медленно ползут по тёмным участкам
-    const float W = lf::kGrid + 2.f * kPad;
-    for (int i = 0; i < 34; i++) {
-        uint32_t h = hash2(i * 31 + 7, i * 17 + 3);
-        float bx = (h % 1000) / 1000.f * W, by = ((h >> 10) % 1000) / 1000.f * W - kPad;
-        float wx = std::fmod(bx + t * (0.12f + (h >> 24) % 5 * 0.03f), W) - kPad;
-        float wy = by + std::sin(t * 0.07f + i * 1.7f) * 2.5f;
-        float a = (1 - lightAt(wx, wy)) * darkness * 0.42f * std::min(1.f, std::min(wx + kPad, W - kPad - wx) / 3.f);
-        if (a < 0.02f) continue;
-        Vec2 p = cam.toScreen(wx, wy, 8);
-        float r = (2.2f + (h >> 20) % 4 * 0.6f) * kTW * cam.zoom / 2;
-        if (p.x < -r || p.x > cam.w + r || p.y < -r || p.y > cam.h + r) continue;
-        ellipseSprite("fx/soft", p.x, p.y, r, r * 0.42f, rgba(60, 40, 110, (int)(255 * a)));
     }
 }
 
@@ -431,22 +347,11 @@ void updateParticles(std::vector<Particle>& ps, float dt) {
     ps.erase(std::remove_if(ps.begin(), ps.end(), [](const Particle& p) { return p.life <= 0; }), ps.end());
 }
 
-float lightAt(float x, float y) {
-    if (!gLightValid) return 1.f;
-    float fx = std::clamp(x + kPad, 0.f, (float)(kLM - 1.001f)), fy = std::clamp(y + kPad, 0.f, (float)(kLM - 1.001f));
-    int i = (int)fx, j = (int)fy;
-    float u = fx - i, v = fy - j;
-    float a = gLight[j * kLM + i], b = gLight[j * kLM + i + 1], c = gLight[(j + 1) * kLM + i], d = gLight[(j + 1) * kLM + i + 1];
-    return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
-}
+void setAmbient(uint32_t color) { gAmbient = color; }
 
-uint32_t lightTint(float x, float y, uint32_t base) {
-    // во тьме — холодный лунный оттенок, у огня — чуть тёплый
-    float l = lightAt(x, y), k = gDark * (1 - l) * 0.85f;
-    float r = 1 - k * 0.5f, g = 1 - k * 0.62f, bl = 1 - k * 0.22f;
-    if (l > 0.5f) { float w = (l - 0.5f) * 0.12f; r = std::min(1.f, r + w); bl -= w; }
-    auto ch = [](uint32_t c, int sh, float m) { return (uint32_t)std::clamp((float)((c >> sh) & 255) * m, 0.f, 255.f); };
-    return ch(base, 0, r) | ch(base, 8, g) << 8 | ch(base, 16, bl) << 16 | (base & 0xff000000u);
+uint32_t ambientTint(uint32_t base) {
+    auto ch = [](uint32_t c, uint32_t m, int sh) { return (((c >> sh) & 255) * ((m >> sh) & 255) / 255) << sh; };
+    return ch(base, gAmbient, 0) | ch(base, gAmbient, 8) | ch(base, gAmbient, 16) | (base & 0xff000000u);
 }
 
 void drawGridAround(const Camera& cam, float cx, float cy, float r) {
@@ -515,7 +420,7 @@ void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level
             float py = y + 0.3f + ((h >> ((k * 3) % 16)) & 7) / 7.f * (s - 0.6f);
             Vec2 p = cam.toScreen(px, py, 3);
             float r = (5 + ((h >> (k % 11)) & 3) * 1.5f) * cam.zoom * appear;
-            ellipseSprite("fx/soft", p.x, p.y, r * 1.3f, r * 0.8f, lightTint(px, py, k % 2 ? rgba(70, 64, 72, 235) : rgba(96, 74, 58, 235)));
+            ellipseSprite("fx/soft", p.x, p.y, r * 1.3f, r * 0.8f, ambientTint(k % 2 ? rgba(70, 64, 72, 235) : rgba(96, 74, 58, 235)));
         }
         // обрушение: здание уходит в землю, сплющиваясь и темнея
         if (sp && look.collapse >= 0 && look.collapse < 1) {
@@ -525,13 +430,13 @@ void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level
             float jx = std::sin(k * 70) * 3 * (1 - k) * cam.zoom;
             float bx = c.x - sp->px * sc + jx, by = c.y - sp->py * sc * (1 - e * 0.75f) + e * 10 * cam.zoom;
             int v = (int)(255 * (1 - k * 0.6f));
-            atlas::drawRect(sp, bx, by, w, hh, lightTint(x + s / 2, y + s / 2, rgba(v, v, v, (int)(255 * (1 - e)))));
+            atlas::drawRect(sp, bx, by, w, hh, ambientTint(rgba(v, v, v, (int)(255 * (1 - e)))));
         }
         return;
     }
     float dim = look.dim * (look.constructing ? 0.7f : 1.f);
     uint32_t col = rgba((int)(255 * dim), (int)(255 * dim), (int)(255 * std::min(1.f, dim * 1.08f)), (int)(255 * look.alpha * (look.constructing ? 0.75f : 1)));
-    if (!look.ghost) col = lightTint(x + s / 2, y + s / 2, col);
+    if (!look.ghost) col = ambientTint(col);
     if (look.hitFlash > 0) c.x += std::sin(t * 90) * look.hitFlash * 6 * cam.zoom;
     bool popping = look.pop >= 0 && look.pop < 1;
     if (popping) gfx::pushScale(c.x, c.y, 1 + 0.13f * std::sin(look.pop * 9.42f) * (1 - look.pop));  // затухающая пружина от основания
@@ -546,18 +451,6 @@ void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level
         gfx::setBlend(gfx::Blend::Alpha);
     }
     if (popping) gfx::popScale();
-    if (look.stunned > 0) {  // ослеплена: над башней кружат искры
-        Vec2 p = cam.toScreen(x + s / 2, y + s / 2, 60 + s * 8);
-        for (int i = 0; i < 3; i++) {
-            float a = t * 5 + i * 2.09f;
-            glowAt(p.x + std::cos(a) * 14 * cam.zoom, p.y + std::sin(a) * 5 * cam.zoom, 7 * cam.zoom + 2, rgba(255, 240, 150, 230));
-        }
-    }
-    if (look.unpowered) {
-        Vec2 p = cam.toScreen(x + s / 2, y + s / 2, 70 + s * 6);
-        float r = 11 * std::max(0.7f, cam.zoom);
-        atlas::drawRect(atlas::get("icon/eclipse"), p.x - r, p.y - r, r * 2, r * 2);
-    }
 }
 
 namespace {
@@ -579,7 +472,7 @@ void drawUnit(const Camera& cam, const std::string& unit, const std::string& ani
     const atlas::Sprite* sp = unitSprite(unit, anim.c_str(), angle, frame, &flip);
     if (!sp) return;
     Vec2 p = cam.toScreen(x, y);
-    atlas::draw(sp, p.x, p.y, cam.zoom * 0.5f, lightTint(x, y, rgba(255, 255, 255, (int)(255 * alpha))), flip);
+    atlas::draw(sp, p.x, p.y, cam.zoom * 0.5f, ambientTint(rgba(255, 255, 255, (int)(255 * alpha))), flip);
 }
 
 void drawParticle(const Camera& cam, const Particle& p) {
@@ -596,7 +489,7 @@ void drawTroop(const Camera& cam, const lf::BTroop& tr, float t, float deadT) {
     if (deadT >= 0 && tr.air) lift *= std::max(0.f, 1 - deadT * 2.5f);  // летуны падают
     Vec2 g = cam.toScreen(tr.x, tr.y);
     Vec2 p = cam.toScreen(tr.x, tr.y, lift);
-    float alpha = tr.hidden ? 0.4f : 1.f;
+    float alpha = 1.f;
     if (deadT >= 0) alpha *= std::clamp(1.f - (deadT - 1.6f) / 1.2f, 0.f, 1.f);
     if (alpha <= 0) return;
     if (tr.air && deadT < 0) ellipseSprite("fx/shadow", g.x, g.y, 12 * cam.zoom, 6 * cam.zoom, rgba(0, 0, 0, 90));
@@ -616,11 +509,7 @@ void drawTroop(const Camera& cam, const lf::BTroop& tr, float t, float deadT) {
     }
     bool flip = false;
     const atlas::Sprite* sp = unitSprite(tr.def->id, anim, tr.angle, f, &flip);
-    uint32_t col = lightTint(tr.x, tr.y, rgba(255, 255, 255, (int)(255 * alpha)));
-    if (tr.def->haze) {
-        glowAt(p.x, p.y - 14 * cam.zoom, 22 * cam.zoom, rgba(150, 90, 220, (int)(60 * alpha)));
-        col = rgba(190, 170, 230, (int)(235 * alpha));
-    }
+    uint32_t col = ambientTint(rgba(255, 255, 255, (int)(255 * alpha)));
     if (sp) atlas::draw(sp, p.x, p.y, cam.zoom * 0.5f, col, flip);
     else ellipseSprite("fx/soft", p.x, p.y - 8 * cam.zoom, 8 * cam.zoom, 10 * cam.zoom, tr.def->color);
     if (deadT >= 0) return;
@@ -634,20 +523,30 @@ void drawTroop(const Camera& cam, const lf::BTroop& tr, float t, float deadT) {
         float y = p.y - 44 * cam.zoom;
         gfx::fillRect(p.x - w / 2 - 1, y - 1, w + 2, 6, rgba(10, 6, 18, 200));
         gfx::fillRect(p.x - w / 2, y, w * std::max(0.f, tr.hp / tr.maxHp), 4,
-                      tr.def->haze ? rgba(200, 110, 255) : tr.type == lf::TroopType::Hero ? rgba(255, 210, 80) : rgba(130, 220, 80));
+                      tr.def->raider ? rgba(230, 90, 70) : tr.type == lf::TroopType::Hero ? rgba(255, 210, 80) : rgba(130, 220, 80));
     }
 }
 
 void drawProjectile(const Camera& cam, const lf::Projectile& p) {
     float h0 = p.fromAir ? 46.f : (p.src ? 40.f : 14.f);
     float z = h0 * (1 - p.k) + 12 * p.k;
-    if (p.kind == lf::Proj::Rock) z += std::sin(p.k * 3.14159f) * 110;
+    if (p.kind == lf::Proj::Ball) z += std::sin(p.k * 3.14159f) * 110;
     Vec2 s = cam.toScreen(p.x, p.y, z);
     switch (p.kind) {
-        case lf::Proj::Rock: {
+        case lf::Proj::Ball: {  // чугунное ядро
             Vec2 g = cam.toScreen(p.x, p.y);
-            ellipseSprite("fx/shadow", g.x, g.y, 7 * cam.zoom, 3.5f * cam.zoom, rgba(0, 0, 0, 90));
-            ellipseSprite("fx/dot", s.x, s.y, 7 * cam.zoom, 7 * cam.zoom, rgba(150, 140, 140));
+            ellipseSprite("fx/shadow", g.x, g.y, 6 * cam.zoom, 3 * cam.zoom, rgba(0, 0, 0, 90));
+            ellipseSprite("fx/dot", s.x, s.y, 5 * cam.zoom, 5 * cam.zoom, rgba(52, 50, 50));
+            break;
+        }
+        case lf::Proj::Bullet: {  // пуля: короткий светлый след и дымок у ствола
+            Vec2 a = cam.toScreen(p.sx, p.sy), b = cam.toScreen(p.tx, p.ty);
+            float dx = b.x - a.x, dy = b.y - a.y, l = std::hypot(dx, dy) + 0.001f;
+            line({s.x - dx / l * 12 * cam.zoom, s.y - dy / l * 12 * cam.zoom}, s, std::max(1.f, 1.6f * cam.zoom), rgba(255, 236, 190, 200));
+            if (p.k < 0.4f) {
+                Vec2 m = cam.toScreen(p.sx, p.sy, h0);
+                ellipseSprite("fx/soft", m.x, m.y - p.k * 20, (6 + p.k * 30) * cam.zoom, (6 + p.k * 30) * cam.zoom, rgba(220, 220, 215, (int)(150 * (1 - p.k / 0.4f))));
+            }
             break;
         }
         case lf::Proj::Bolt:
@@ -655,22 +554,12 @@ void drawProjectile(const Camera& cam, const lf::Projectile& p) {
             Vec2 a = cam.toScreen(p.sx, p.sy), b = cam.toScreen(p.tx, p.ty);
             float dx = b.x - a.x, dy = b.y - a.y, l = std::hypot(dx, dy) + 0.001f;
             float L = (p.kind == lf::Proj::Bolt ? 16 : 9) * cam.zoom;
-            line({s.x - dx / l * L, s.y - dy / l * L}, s, std::max(1.5f, 2.5f * cam.zoom), p.kind == lf::Proj::Bolt ? rgba(240, 225, 190) : rgba(210, 240, 170));
+            line({s.x - dx / l * L, s.y - dy / l * L}, s, std::max(1.2f, 2.f * cam.zoom), p.kind == lf::Proj::Bolt ? rgba(200, 180, 150) : rgba(190, 170, 130));
             break;
         }
         default:
-            glowAt(s.x, s.y, 9 * cam.zoom + 3, p.kind == lf::Proj::Wisp ? rgba(200, 140, 255, 230) : rgba(255, 240, 200, 230));
+            ellipseSprite("fx/dot", s.x, s.y, 3 * cam.zoom, 3 * cam.zoom, rgba(60, 50, 40));
     }
-}
-
-void drawBeam(const Camera& cam, const lf::BBuilding& b, const lf::BTroop& tr) {
-    Vec2 a = cam.toScreen(b.cx, b.cy, 64), c = cam.toScreen(tr.x, tr.y, tr.air ? 46.f : 10.f);
-    float k = std::min(1.f, b.beamT / 1.5f);
-    gfx::setBlend(gfx::Blend::Add);
-    line(a, c, (3 + k * 6) * cam.zoom + 1, rgba(255, 110, 230, (int)(110 + k * 100)));
-    line(a, c, 1.5f, rgba(255, 255, 255, 230));
-    gfx::setBlend(gfx::Blend::Alpha);
-    glowAt(c.x, c.y, 14 * cam.zoom + 4, rgba(255, 150, 240, 200));
 }
 
 void drawEffect(const Camera& cam, const lf::Effect& e, float t) {
@@ -700,30 +589,33 @@ void drawEffect(const Camera& cam, const lf::Effect& e, float t) {
         case lf::Fx::Poof:
             ellipseSprite("fx/soft", p.x, p.y - 8 * z - k * 14 * z, (5 + k * 10) * z, (5 + k * 10) * z, rgba(160, 150, 170, (int)(150 * (1 - k))));
             break;
-        case lf::Fx::Flame: {
+        case lf::Fx::Pitch: {  // струя кипящей смолы от котла и тёмная лужа с паром
             Vec2 a = cam.toScreen(e.sx, e.sy, 40);
             for (int i = 0; i <= 6; i++) {
                 float f = i / 6.f;
-                glowAt(a.x + (p.x - a.x) * f, a.y + (p.y - 8 * z - a.y) * f, (7 + f * 14) * z + 2, rgba(255, (int)(150 - f * 60), 40, (int)(230 * (1 - k))));
+                ellipseSprite("fx/soft", a.x + (p.x - a.x) * f, a.y + (p.y - 6 * z - a.y) * f, (3 + f * 5) * z + 1, (3 + f * 5) * z + 1,
+                              rgba(40, 28, 18, (int)(220 * (1 - k))));
             }
+            float rx = 1.4f * kTW * z / kSqrt2 * (0.5f + k * 0.5f);
+            ellipseSprite("fx/soft", p.x, p.y, rx, rx / 2, rgba(30, 22, 14, (int)(170 * (1 - k))));
+            ellipseSprite("fx/soft", p.x, p.y - 14 * z - k * 20 * z, rx * 0.6f, rx * 0.5f, rgba(230, 230, 225, (int)(90 * (1 - k))));
             break;
         }
-        case lf::Fx::EclipseFx: {
-            float rx = lf::kEclipseRadius * kTW * z / kSqrt2 * (0.2f + k);
-            ellipseSprite("fx/ring", p.x, p.y, rx, rx / 2, rgba(190, 140, 255, (int)(255 * (1 - k))));
+        case lf::Fx::Smoke:
+            ellipseSprite("fx/soft", p.x, p.y - 10 * z - k * 30 * z, (8 + k * 18) * z, (8 + k * 18) * z, rgba(200, 200, 195, (int)(140 * (1 - k))));
             break;
-        }
-        case lf::Fx::Flash: {
+        case lf::Fx::Cry: {  // боевой клич: волна, расходящаяся от Воеводы
             float rx = e.r * kTW * z / kSqrt2 * (0.15f + k * 0.85f);
-            ellipseSprite("fx/glow", p.x, p.y, rx * 1.2f, rx * 0.6f, rgba(255, 240, 180, (int)(220 * (1 - k))), true);
-            ellipseSprite("fx/ring", p.x, p.y, rx, rx / 2, rgba(255, 230, 140, (int)(255 * (1 - k))));
-            glowAt(p.x, p.y - 30 * z, (40 + 60 * k) * z, rgba(255, 250, 220, (int)(255 * (1 - k))));
+            ellipseSprite("fx/ring", p.x, p.y, rx, rx / 2, rgba(255, 210, 120, (int)(230 * (1 - k))));
+            ellipseSprite("fx/ring", p.x, p.y, rx * 0.7f, rx * 0.35f, rgba(255, 180, 90, (int)(160 * (1 - k))));
             break;
         }
-        case lf::Fx::Rift:
-            for (int i = 0; i < 3; i++) {
-                float rx = 40 * z * (0.4f + i * 0.3f + k * 0.3f);
-                ellipseSprite("fx/ring", p.x, p.y, rx, rx / 2, rgba(170, 110, 240, (int)(230 * (1 - k))));
+        case lf::Fx::Arrival:  // ватага выходит из леса: пыль
+            for (int i = 0; i < 5; i++) {
+                float a = i * 1.26f;
+                float rr = 30 * z * (0.5f + k);
+                ellipseSprite("fx/soft", p.x + std::cos(a) * rr, p.y + std::sin(a) * rr * 0.5f - k * 10 * z, 14 * z, 10 * z,
+                              rgba(170, 155, 130, (int)(140 * (1 - k))));
             }
             break;
     }

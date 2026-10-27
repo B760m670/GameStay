@@ -50,13 +50,13 @@ void Online::saveCreds() {
 void Online::ensureAccount() {
     if (!enabled() || ready() || registering_) return;
     registering_ = true;
-    net::request("POST", api("/v1/register"), "{\"name\":\"Фонарщик\"}", "", [this](const net::Response& r) {
+    net::request("POST", api("/v1/register"), "{\"name\":\"Приказчик\"}", "", [this](const net::Response& r) {
         registering_ = false;
         if (r.status != 200) return;
         auto v = json::parse(r.body);
         id_ = v["id"].i64();
         token_ = v["token"].s();
-        name_ = "Фонарщик";
+        name_ = "Приказчик";
         if (!token_.empty()) saveCreds();
     });
 }

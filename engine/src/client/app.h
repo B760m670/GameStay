@@ -44,7 +44,7 @@ struct BattleState {
     bool started = false;
     float scout = 30, acc = 0, holdT = 0, endDelay = 0;
     int speed = 1;
-    int sel = -1;                 // индекс типа войск, 100 — Затмение
+    int sel = -1;                 // индекс типа войск или приёма (101 — лекарь, 102 — рог, 103 — воевода)
     bool holding = false;
     Vec2 holdPos{0, 0};
     std::vector<std::pair<int, float>> flashes;  // клетка, время

@@ -86,7 +86,7 @@ func cleanName(n string) string {
 		n = string([]rune(n)[:16])
 	}
 	if n == "" {
-		n = "Фонарщик"
+		n = "Приказчик"
 	}
 	return filterText(n)
 }

@@ -44,7 +44,7 @@ func TickSave(save string, nowMs int64) (string, error) {
 	return goStr(out), nil
 }
 
-// Summary — уровень, рейтинг, Фонарь, ресурсы из сохранения.
+// Summary — уровень, рейтинг, уровень острога, ресурсы из сохранения.
 func Summary(save string) (map[string]int64, error) {
 	c, free := cstr(save)
 	defer free()

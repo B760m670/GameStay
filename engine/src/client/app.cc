@@ -175,7 +175,7 @@ bool App::drawDialogue() {
     float tx = bx + 22;
     bool named = sp.name && *sp.name;
     if (named) {
-        static const char* ids[] = {"", "portrait/vira", "portrait/keeper", "portrait/haze", "portrait/king"};
+        static const char* ids[] = {"", "portrait/elisey", "portrait/player", "portrait/kudeyar", "portrait/voevoda"};
         const atlas::Sprite* pic = atlas::get(ids[(int)line.who]);
         float ps = std::min(150.f, by - 12);
         if (pic) {
@@ -249,11 +249,11 @@ void App::frame(float dt, float width, float height) {
     else battleFrame(dt, world);
     if (S.levelUps > 0 && dlg.empty() && modal == Modal::None) {
         int reward = lf::village::levelReward(S.level);
-        toast("Новый уровень " + std::to_string(S.level) + "!  +" + std::to_string(reward) + " осколков", gfx::rgba(255, 216, 107));
+        toast("Новый уровень " + std::to_string(S.level) + "!  +" + std::to_string(reward) + " серебра", gfx::rgba(255, 216, 107));
         audio::play("win", 0.7f);
         spawnFlyers(lf::Res::Shards, {cam.w / 2, cam.h / 2}, reward * 40);
-        if (S.level == lf::village::spellUnlockLevel(lf::Spell::Heal)) toast("Открыто заклинание «Исцеление» — лечит отряды в бою", gfx::rgba(160, 240, 140));
-        if (S.level == lf::village::spellUnlockLevel(lf::Spell::Rage)) toast("Открыто заклинание «Ярость» — отряды быстрее бегут и бьют", gfx::rgba(255, 150, 120));
+        if (S.level == lf::village::spellUnlockLevel(lf::Spell::Heal)) toast("В поход теперь идёт лекарь — лечит отряды в бою", gfx::rgba(160, 240, 140));
+        if (S.level == lf::village::spellUnlockLevel(lf::Spell::Rage)) toast("Открыт боевой рог — по его сигналу отряды быстрее бегут и бьют", gfx::rgba(255, 150, 120));
         S.levelUps = 0;
         save();
     }
@@ -284,7 +284,7 @@ void App::drawTitle(float dt) {
     } else {
         gfx::fillRect(0, 0, W, H, rgba(13, 10, 28, (int)(255 * fade)));
     }
-    // угольки от Фонаря
+    // искры костра
     if (embers.size() < 60) {
         float x = W * (0.3f + (float)(std::rand() % 1000) / 2500.f);
         embers.push_back({x, H * 0.65f, 0, ((std::rand() % 100) - 50) * 0.3f, -30.f - std::rand() % 40, 0, 3.f + (std::rand() % 100) / 50.f, 5.f, 3.f + std::rand() % 4,
@@ -309,9 +309,9 @@ void App::drawTitle(float dt) {
     float ty = H * 0.08f;
     float pulse = 1 + 0.015f * std::sin(t * 2.2f);
     gfx::pushScale(W / 2, ty + 34, pulse, fade);
-    font::draw("LANTERNFALL", W / 2, ty, 64, rgba(255, 216, 107), font::Center);
+    font::draw("ОСТРОГ", W / 2, ty, 64, rgba(255, 216, 107), font::Center);
     gfx::popScale();
-    font::draw("Пока горит Фонарь — Мгла не пройдёт", W / 2, ty + 78, 19, rgba(235, 225, 255, (int)(235 * fade)), font::Center);
+    font::draw("Летопись Тихой реки", W / 2, ty + 78, 19, rgba(235, 225, 255, (int)(235 * fade)), font::Center);
     float blink = 0.55f + 0.45f * std::sin(t * 3.5f);
     font::draw("Нажми, чтобы начать", W / 2, H - safeB - 44, 22, rgba(255, 240, 200, (int)(255 * blink * fade)), font::Center);
     if (titleOut < 0 && ui::tapped({0, 0, W, H})) {
@@ -339,7 +339,6 @@ void App::startMission(int idx) {
     o.layout = lf::basegen::generate(ms.LL, ms.seed, &ms.counts, ms.richness, ms.levelBias);
     o.army = armyMap(S);
     o.troopLevels = levelMap(S);
-    o.eclipseCharges = lf::eclipseCharges(lf::village::lanternLevel(S));
     o.spells = lf::village::spellCharges(S.level);
     o.heroLevel = lf::village::heroUnlocked(S) ? S.heroLevel : 0;
     o.seed = ms.seed;
@@ -351,21 +350,20 @@ void App::startRaid() {
     else startAiRaid();
 }
 
-// Набег на заставу Угасших (база-ИИ): офлайн или когда живых соперников не нашлось.
+// Поход на острожек ватаги (база-ИИ): офлайн или когда живых соперников не нашлось.
 void App::startAiRaid() {
     int LL = lf::village::lanternLevel(S);
     int seed = (int)(now() & 0x7fffffff);
     lf::Rng rng(seed);
-    int eLL = std::clamp(LL + (rng.next() < 0.25 ? -1 : 0) + (rng.next() < 0.15 && LL < 6 ? 1 : 0), 1, 6);
+    int eLL = std::clamp(LL + (rng.next() < 0.25 ? -1 : 0) + (rng.next() < 0.15 && LL < lf::kMaxLantern ? 1 : 0), 1, lf::kMaxLantern);
     lf::BattleOptions o;
     o.layout = lf::basegen::generate(eLL, seed, nullptr, 0.7f + rng.nextf() * 0.6f);
     o.army = armyMap(S);
     o.troopLevels = levelMap(S);
-    o.eclipseCharges = lf::eclipseCharges(LL);
     o.spells = lf::village::spellCharges(S.level);
     o.heroLevel = lf::village::heroUnlocked(S) ? S.heroLevel : 0;
     o.seed = seed;
-    std::string name = lf::basegen::rivalName(rng) + " · Острог " + std::to_string(eLL);
+    std::string name = lf::basegen::rivalName(rng) + " · острог " + std::to_string(eLL);
     enterBattle(o, BattleKind::Raid, name);
 }
 
@@ -383,7 +381,7 @@ void App::startOnlineRaid() {
         online.findMatch([this](bool ok, const Online::Match& m, const std::string& err) {
             searching = false;
             if (!ok) {
-                toast(err + " — набег на заставу Угасших", rgba(255, 140, 130));
+                toast(err + " — идём на острожек ватаги", rgba(255, 140, 130));
                 startAiRaid();
                 return;
             }
@@ -393,8 +391,7 @@ void App::startOnlineRaid() {
             o.layout = snap.opts.layout;
             o.army = armyMap(S);
             o.troopLevels = levelMap(S);
-            o.eclipseCharges = lf::eclipseCharges(lf::village::lanternLevel(S));
-            o.spells = lf::village::spellCharges(S.level);
+                    o.spells = lf::village::spellCharges(S.level);
             o.heroLevel = lf::village::heroUnlocked(S) ? S.heroLevel : 0;
             o.seed = m.seed;
             enterBattle(o, BattleKind::Raid, m.name + " · " + std::to_string(m.rating));
@@ -447,7 +444,7 @@ void App::onlineFrame(float dt) {
         if (dOre > 0 || dAe > 0) {
             S.ore = std::max(0LL, S.ore - dOre);
             S.aether = std::max(0LL, S.aether - dAe);
-            toast("Налётчики унесли " + fmtNum(dOre) + " руды и " + fmtNum(dAe) + " Эфира", rgba(255, 140, 130));
+            toast("Налётчики унесли " + fmtNum(dOre) + " леса и " + fmtNum(dAe) + " хлеба", rgba(255, 140, 130));
             online.defenses([this](const json::Value& v) { defenseLog = v; });
         }
         S.rating = rating;
@@ -463,10 +460,10 @@ void App::startNight() {
     o.mode = lf::BattleMode::Defense;
     o.layout = lf::village::layout(S, 0.25f);
     o.waves = night.waves;
-    o.hazeMult = night.hazeMult;
+    o.raidMult = night.raidMult;
     o.seed = seed;
     o.duration = lf::kNightTime;
-    enterBattle(o, BattleKind::Night, "Ночь " + std::to_string(S.nights + 1));
+    enterBattle(o, BattleKind::Night, "Набег " + std::to_string(S.nights + 1));
 }
 
 void App::finishBattle() {
@@ -491,12 +488,10 @@ void App::finishBattle() {
         } else S.stats.nightsLost++;
         lf::village::scheduleNextNight(S, now());
     } else {
-        int beacons = 0;
-        for (const auto& b : bt.b->buildings) beacons += b.dead && b.type == lf::BType::Beacon;
         if (bt.kind == BattleKind::Raid && bt.onlineMatch > 0) {
             submitOnlineRaid();
         } else if (bt.kind == BattleKind::Raid) {
-            auto o = lf::village::applyRaid(S, r, beacons);
+            auto o = lf::village::applyRaid(S, r);
             bt.gotOre = o.ore;
             bt.gotAether = o.aether;
             bt.gotShards = o.shards;
@@ -510,7 +505,7 @@ void App::finishBattle() {
             S.stats.attacks++;
             if (r.win) S.stats.wins++;
             S.stats.stars += r.stars;
-            S.stats.beaconsDestroyed += beacons;
+            if (r.hqDead) S.stats.hqsDestroyed++;
             lf::village::addXp(S, 2 + 6LL * r.stars);
             const auto& ms = lf::campaign::missions()[bt.missionIdx];
             int prev = S.campaign.count(ms.id) ? S.campaign[ms.id] : 0;

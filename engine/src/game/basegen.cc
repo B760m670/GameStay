@@ -1,4 +1,4 @@
-// Процедурная генерация вражеских баз и ночных волн Мглы.
+// Процедурная генерация чужих острогов и волн набега разбойников.
 #include <algorithm>
 #include <cmath>
 #include <optional>
@@ -8,18 +8,24 @@
 namespace lf::basegen {
 
 std::string rivalName(Rng& rng) {
-    static const char* A[] = {"Серый", "Угасший", "Безмолвный", "Хромой", "Пепельный", "Слепой", "Ржавый", "Последний", "Одинокий", "Тусклый"};
-    static const char* N[] = {"Ольгерд", "Мирава", "Тарн", "Ивица", "Бранко", "Ведана", "Корвин", "Ярена", "Стигг", "Лучезар", "Агния", "Ратибор"};
+    static const char* A[] = {"Кривой", "Рыжий", "Лихой", "Беглый", "Старый", "Хмурый", "Тихий", "Косой", "Седой", "Хромой"};
+    static const char* N[] = {"Ерофей", "Пахом", "Гордей", "Фрол", "Демид", "Остап", "Прохор", "Евсей", "Никифор", "Савва", "Тимофей", "Лука"};
     std::string a = A[rng.range(10)];
     return a + " " + N[rng.range(12)];
 }
 
 std::vector<LayoutItem> generate(int LL, int seed, const std::map<BType, int>* counts, float richness, int levelBias) {
-    LL = std::clamp(LL, 1, kMaxLantern);  // походы с Острогом выше предела игры строятся на пределе
+    LL = std::clamp(LL, 1, kMaxLantern);  // походы с острогом выше предела игры строятся на пределе
     Rng rng(seed);
     std::vector<LayoutItem> layout;
     std::vector<uint8_t> occ(kGrid * kGrid, 0);  // 0 пусто, 1 здание, 2 стена
-    std::vector<LightSource> src;
+    const int C = kGrid / 2;
+    const float lr = std::min(19.f, 11.f + 2.f * LL);  // радиус поселения: растёт с уровнем острога
+    auto inside = [&](int x, int y, int s) {  // вся постройка в круге поселения
+        for (int j : {y, y + s}) for (int i : {x, x + s})
+            if (std::hypot(i - (float)C, j - (float)C) > lr + 0.5f) return false;
+        return true;
+    };
 
     auto lvl = [&](BType t) {
         int max = village::maxLevelAllowed(t, LL);
@@ -51,28 +57,12 @@ std::vector<LayoutItem> generate(int LL, int seed, const std::map<BType, int>* c
             for (int i = x; i < x + s; i++) occ[j * kGrid + i] = t == BType::Wall ? 2 : 1;
         LayoutItem it{t, x, y, level, (int)layout.size()};
         layout.push_back(it);
-        if (B(t).isLight()) src.push_back({x + s / 2.f, y + s / 2.f, B(t).lv(B(t).light, level), it.id});
         return layout.size() - 1;
     };
 
-    const int C = kGrid / 2;
     size_t lantern = put(BType::Lantern, C - 2, C - 2, LL);
-    const float lr = B(BType::Lantern).lv(B(BType::Lantern).light, LL);
 
-    // Светочи — по кругу у края света Фонаря.
-    int nBeacons = count(BType::Beacon);
-    double a0 = rng.next() * 3.14159265358979323846 * 2;
-    for (int k = 0; k < nBeacons; k++) {
-        int level = lvl(BType::Beacon);
-        for (int tries = 0; tries < 40; tries++) {
-            double a = a0 + k * 3.14159265358979323846 * 2 / std::max(1, nBeacons) + (rng.next() - 0.5) * 0.6;
-            double d = lr - 1.8 - rng.next() * 1.5 - tries * 0.05;
-            int x = (int)std::lround(C + std::cos(a) * d - 1), y = (int)std::lround(C + std::sin(a) * d - 1);
-            if (freeAt(x, y, 2, 1) && footprintLit(x, y, 2, src)) { put(BType::Beacon, x, y, level); break; }
-        }
-    }
-
-    // Стены — квадратные кольца вокруг Фонаря.
+    // Частокол — квадратные кольца вокруг острога.
     int walls = count(BType::Wall);
     int wallLevel = lvl(BType::Wall);
     const int lx = layout[lantern].x, ly = layout[lantern].y;
@@ -81,7 +71,7 @@ std::vector<LayoutItem> generate(int LL, int seed, const std::map<BType, int>* c
         std::vector<std::pair<int, int>> all;
         for (int i = x0; i <= x1; i++) { all.push_back({i, y0}); all.push_back({i, y1}); }
         for (int j = y0 + 1; j < y1; j++) { all.push_back({x0, j}); all.push_back({x1, j}); }
-        for (auto [i, j] : all) if (!isLit(i + 0.5f, j + 0.5f, src)) return false;
+        for (auto [i, j] : all) if (!inside(i, j, 1)) return false;
         std::vector<std::pair<int, int>> tiles;
         for (auto p : all) if (freeAt(p.first, p.second, 1, 0)) tiles.push_back(p);
         if (tiles.empty() || (int)tiles.size() > walls) return false;
@@ -102,7 +92,7 @@ std::vector<LayoutItem> generate(int LL, int seed, const std::map<BType, int>* c
     const std::pair<BType, int> order[] = {
         {BType::OreStore, 0}, {BType::AetherStore, 0},
         {BType::Prism, 1}, {BType::Catapult, 1}, {BType::Brazier, 1}, {BType::Ballista, 1},
-        {BType::Barracks, 2}, {BType::Camp, 2}, {BType::OreMine, 2}, {BType::AetherWell, 2}, {BType::BuilderHut, 2},
+        {BType::Barracks, 2}, {BType::Camp, 2}, {BType::OreMine, 2}, {BType::AetherWell, 2}, {BType::BuilderHut, 2}, {BType::Beacon, 2}, {BType::Workshop, 2},
         {BType::Trap, 1},
     };
     std::map<BType, std::vector<size_t>> placed;
@@ -114,7 +104,7 @@ std::vector<LayoutItem> generate(int LL, int seed, const std::map<BType, int>* c
             for (int c = 0; c < 260; c++) {
                 int x = (int)std::floor(kBorder + rng.next() * (kGrid - 2 * kBorder - s));
                 int y = (int)std::floor(kBorder + rng.next() * (kGrid - 2 * kBorder - s));
-                if (!freeAt(x, y, s, 1) || !footprintLit(x, y, s, src)) continue;
+                if (!freeAt(x, y, s, 1) || !inside(x, y, s)) continue;
                 double d = std::hypot(x + s / 2.0 - C, y + s / 2.0 - C), score;
                 if (role == 0) score = d;
                 else if (role == 1) score = std::abs(d - (3 + std::fmod(k * 2.7, lr + 1))) * 0.7;
@@ -169,7 +159,7 @@ Night nightWaves(int LL, int nights, int seed) {
             left -= T(t).housing;
         }
     }
-    n.hazeMult = 1.f + 0.05f * std::min(nights, 30);
+    n.raidMult = 1.f + 0.05f * std::min(nights, 30);
     return n;
 }
 

@@ -1,4 +1,4 @@
-// Детерминированная симуляция боя (атака игрока и ночная оборона от Мглы) + поиск пути A*.
+// Детерминированная симуляция боя (поход игрока и отпор набегу разбойников) + поиск пути A*.
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -72,8 +72,8 @@ constexpr float kWallCost = 10.f;
 }
 
 Battle::Battle(const BattleOptions& o)
-    : mode(o.mode), duration(o.duration), rng(o.seed), eclipseChargesLeft(o.eclipseCharges), spells(o.spells), heroLevel(o.heroLevel), pool(o.army),
-      tileOwner(kGrid * kGrid, -1), waves(o.waves), hazeMult(o.hazeMult), troopLevels(o.troopLevels) {
+    : mode(o.mode), duration(o.duration), rng(o.seed), spells(o.spells), heroLevel(o.heroLevel), pool(o.army),
+      tileOwner(kGrid * kGrid, -1), waves(o.waves), raidMult(o.raidMult), troopLevels(o.troopLevels) {
     for (size_t idx = 0; idx < o.layout.size(); idx++) {
         const auto& it = o.layout[idx];
         const BuildingDef& d = B(it.type);
@@ -88,7 +88,6 @@ Battle::Battle(const BattleOptions& o)
         b.hp = b.maxHp = (float)d.lv(d.hp, it.level);
         b.cx = it.x + d.size / 2.f;
         b.cy = it.y + d.size / 2.f;
-        b.lightR = d.isLight() ? d.lv(d.light, it.level) : 0.f;
         b.lootOre = it.lootOre;
         b.lootAether = it.lootAether;
         if (b.isStructure()) total++;
@@ -99,35 +98,28 @@ Battle::Battle(const BattleOptions& o)
             for (int i = b.x; i < b.x + b.size; i++) tileOwner[j * kGrid + i] = (int)idx;
         buildings.push_back(b);
     }
-    relight();
+    updateDeployZone();
 }
 
-void Battle::relight() {
-    sources.clear();
-    for (const auto& b : buildings)
-        if (b.isLight() && !b.dead) sources.push_back({b.cx, b.cy, b.lightR, b.id});
-    lit = litGrid(sources, &eclipses);
-    for (auto& b : buildings)
-        if (b.isDefense()) b.powered = lit[(int)b.cy * kGrid + (int)b.cx] != 0;
-}
-
-bool Battle::litAt(float x, float y) const {
-    int i = std::clamp((int)std::floor(x), 0, kGrid - 1), j = std::clamp((int)std::floor(y), 0, kGrid - 1);
-    return lit[j * kGrid + i] != 0;
+void Battle::updateDeployZone() {
+    // Высаживаться можно на открытой земле: не на постройках и не вплотную к ним (клетка зазора).
+    noDeploy.assign(kGrid * kGrid, 0);
+    for (const auto& b : buildings) {
+        if (b.dead || b.isTrap()) continue;
+        for (int j = std::max(0, b.y - 1); j < std::min(kGrid, b.y + b.size + 1); j++)
+            for (int i = std::max(0, b.x - 1); i < std::min(kGrid, b.x + b.size + 1); i++) noDeploy[j * kGrid + i] = 1;
+    }
 }
 
 bool Battle::canDeploy(float x, float y) const {
     if (x < 0 || y < 0 || x >= kGrid || y >= kGrid) return false;
-    int i = (int)x, j = (int)y;
-    if (lit[j * kGrid + i]) return false;
-    int o = tileOwner[j * kGrid + i];
-    return o < 0 || buildings[o].dead;
+    return !noDeploy[(int)y * kGrid + (int)x];
 }
 
 int Battle::spawn(TroopType type, float x, float y) {
     const TroopDef& d = T(type);
-    float hpMult = mode == BattleMode::Defense ? hazeMult : 1.f;
-    if (!d.haze) {
+    float hpMult = mode == BattleMode::Defense ? raidMult : 1.f;
+    if (!d.raider) {
         auto it = troopLevels.find(type);
         if (it != troopLevels.end()) hpMult *= village::troopMult(it->second);
     }
@@ -138,8 +130,8 @@ int Battle::spawn(TroopType type, float x, float y) {
     t.x = x;
     t.y = y;
     t.hp = t.maxHp = d.hp * hpMult;
-    t.dmgMult = mode == BattleMode::Defense ? 1.f + (hazeMult - 1.f) * 0.5f : 1.f;
-    if (!d.haze && troopLevels.count(type)) t.dmgMult *= village::troopMult(troopLevels.at(type));
+    t.dmgMult = mode == BattleMode::Defense ? 1.f + (raidMult - 1.f) * 0.5f : 1.f;
+    if (!d.raider && troopLevels.count(type)) t.dmgMult *= village::troopMult(troopLevels.at(type));
     t.air = d.air;
     t.jx = (rng.nextf() - 0.5f) * 0.6f;
     t.jy = (rng.nextf() - 0.5f) * 0.6f;
@@ -175,12 +167,14 @@ bool Battle::heroAbility() {
     if (ended || heroIdx < 0 || heroAbilityUsed || troops[heroIdx].dead) return false;
     heroAbilityUsed = true;
     const BTroop& h = troops[heroIdx];
-    for (auto& b : buildings)
-        if (!b.dead && b.isDefense() && std::hypot(b.cx - h.x, b.cy - h.y) <= kHeroFlashRadius + b.size / 2.f) b.stunT = kHeroStun;
+    // Боевой клич: отряды вокруг подлечиваются и на время свирепеют
     for (auto& t : troops)
-        if (!t.dead && !t.def->haze && std::hypot(t.x - h.x, t.y - h.y) <= kHeroFlashRadius) t.hp = std::min(t.maxHp, t.hp + t.maxHp * kHeroFlashHeal);
-    effects.push_back({Fx::Flash, h.x, h.y, 0, 0, 0.9f, 0.9f, kHeroFlashRadius});
-    events.push_back({Ev::HeroFlash, h.x, h.y, BType::Lantern});
+        if (!t.dead && !t.def->raider && std::hypot(t.x - h.x, t.y - h.y) <= kHeroCryRadius) {
+            t.hp = std::min(t.maxHp, t.hp + t.maxHp * kHeroCryHeal);
+            t.rageT = kHeroCryTime;
+        }
+    effects.push_back({Fx::Cry, h.x, h.y, 0, 0, 0.9f, 0.9f, kHeroCryRadius});
+    events.push_back({Ev::HeroCry, h.x, h.y, BType::Lantern});
     return true;
 }
 
@@ -190,16 +184,6 @@ bool Battle::castSpell(Spell s, float x, float y) {
     it->second--;
     zones.push_back({s, x, y, kSpellRadius, time + kSpellDuration});
     events.push_back({Ev::SpellCast, x, y, BType::Lantern});
-    return true;
-}
-
-bool Battle::castEclipse(float x, float y) {
-    if (ended || eclipseChargesLeft <= 0) return false;
-    eclipseChargesLeft--;
-    eclipses.push_back({x, y, kEclipseRadius, time + kEclipseDuration});
-    effects.push_back({Fx::EclipseFx, x, y, 0, 0, 1, 1});
-    relight();
-    events.push_back({Ev::EclipseCast, x, y, BType::Lantern});
     return true;
 }
 
@@ -218,7 +202,7 @@ int Battle::chooseTarget(const BTroop& t) const {
     int r = -1;
     switch (t.def->target) {
         case Target::Defense: r = pick([](const BBuilding& b) { return b.isDefense(); }); break;
-        case Target::Light: r = pick([](const BBuilding& b) { return b.isLight(); }); break;
+        case Target::Economy: r = pick([](const BBuilding& b) { return b.isEconomy(); }); break;
         case Target::Wall: r = pick([](const BBuilding& b) { return b.isWall(); }); break;
         default: break;
     }
@@ -237,7 +221,11 @@ float Battle::cellCost(int i) const {
 void Battle::damageBuilding(int bi, float dmg, int attacker) {
     auto& b = buildings[bi];
     if (b.dead) return;
-    if (attacker >= 0 && b.isLight()) dmg *= troops[attacker].def->lightMult;
+    if (attacker >= 0) {
+        const TroopDef& d = *troops[attacker].def;
+        if (b.isEconomy()) dmg *= d.econMult;
+        if (b.isWall()) dmg *= d.wallMult;
+    }
     float dealt = std::min(dmg, b.hp);
     if (b.lootOre > 0 || b.lootAether > 0) {
         float f = dealt / b.maxHp;
@@ -257,13 +245,10 @@ void Battle::destroyBuilding(int bi) {
     events.push_back({Ev::Destroyed, b.cx, b.cy, b.type});
     if (b.isStructure()) destroyed++;
     if (b.type == BType::Lantern) {
-        lanternDead = true;
-        events.push_back({Ev::Lantern, b.cx, b.cy, b.type});
+        hqDead = true;
+        events.push_back({Ev::Hq, b.cx, b.cy, b.type});
     }
-    if (b.isLight()) {
-        relight();
-        if (b.type == BType::Beacon) events.push_back({Ev::LightsOut, b.cx, b.cy, b.type});
-    }
+    updateDeployZone();
 }
 
 void Battle::damageTroop(int ti, float dmg) {
@@ -287,17 +272,6 @@ void Battle::troopAttack(int ti, int bi) {
     t.angle = std::atan2(b.cy - t.y, b.cx - t.x);
     if (t.cd > 0) return;
     const TroopDef& d = *t.def;
-    if (d.suicide) {
-        for (size_t i = 0; i < buildings.size(); i++) {
-            const auto& o = buildings[i];
-            if (o.dead || o.isTrap()) continue;
-            if (distToRect(t.x, t.y, (float)o.x, (float)o.y, (float)o.size) <= d.splash)
-                damageBuilding((int)i, o.isWall() ? d.dmg : d.dmg * 0.25f, ti);
-        }
-        effects.push_back({Fx::Blast, t.x, t.y, 0, 0, 0.6f, 0.6f, d.splash});
-        troops[ti].dead = true;
-        return;
-    }
     t.cd = d.cd;
     float dmg = d.dmg * t.dmgMult;
     if (d.ranged != Proj::None) {
@@ -333,13 +307,13 @@ static bool moveToward(BTroop& t, float x, float y, float step) {
 void Battle::updateTroop(int ti, float dt) {
     BTroop& t = troops[ti];
     float rage = 1;
+    if (t.rageT > 0) { t.rageT -= dt; rage = kRageMult; }
     for (const auto& z : zones)
-        if (z.kind == Spell::Rage && !t.def->haze && std::hypot(t.x - z.x, t.y - z.y) <= z.r) rage = kRageMult;
+        if (z.kind == Spell::Rage && !t.def->raider && std::hypot(t.x - z.x, t.y - z.y) <= z.r) rage = kRageMult;
     if (t.cd > 0) t.cd -= dt * rage;
     if (t.hitT > 0) t.hitT -= dt;
     t.animT += dt;
     t.attacking = false;
-    t.hidden = t.def->stealth && !litAt(t.x, t.y);
     if (t.target < 0 || buildings[t.target].dead) {
         t.target = chooseTarget(t);
         t.hasPath = false;
@@ -378,7 +352,7 @@ void Battle::updateTroop(int ti, float dt) {
 }
 
 bool Battle::canHit(const BBuilding& b, const BTroop& t) const {
-    if (t.dead || t.hidden) return false;
+    if (t.dead) return false;
     if (t.air ? !b.def->air : !b.def->ground) return false;
     float d = std::hypot(t.x - b.cx, t.y - b.cy);
     if (d > b.def->range + 0.3f) return false;
@@ -389,9 +363,7 @@ bool Battle::canHit(const BBuilding& b, const BTroop& t) const {
 void Battle::updateDefense(int bi, float dt) {
     BBuilding& b = buildings[bi];
     if (b.cd > 0) b.cd -= dt;
-    if (b.stunT > 0) { b.stunT -= dt; b.target = -1; b.beamT = 0; return; }  // ослеплена Вспышкой
-    if (!b.powered) { b.target = -1; b.beamT = 0; return; }
-    if (b.target >= 0 && !canHit(b, troops[b.target])) { b.target = -1; b.beamT = 0; }
+    if (b.target >= 0 && !canHit(b, troops[b.target])) b.target = -1;
     if (b.target < 0) {
         int best = -1;
         float bd = std::numeric_limits<float>::max();
@@ -401,25 +373,18 @@ void Battle::updateDefense(int bi, float dt) {
             if (d < bd) { bd = d; best = (int)i; }
         }
         b.target = best;
-        b.beamT = 0;
     }
     if (b.target < 0) return;
     const BTroop& tr = troops[b.target];
     b.angle = std::atan2(tr.y - b.cy, tr.x - b.cx);
-    if (b.def->beam) {
-        b.beamT += dt;
-        float mult = std::min(b.def->rampMax, 1 + b.beamT * b.def->rampRate);
-        damageTroop(b.target, b.def->lv(b.def->dps, b.level) * mult * dt);
-        return;
-    }
     if (b.cd > 0) return;
     b.cd = b.def->cd;
     events.push_back({Ev::Shot, b.cx, b.cy, b.type});
     float dmg = (float)b.def->lv(b.def->dmg, b.level);
-    if (b.def->proj == Proj::Flame) {
+    if (b.def->proj == Proj::Pitch) {  // смола льётся сразу, без полёта снаряда
         float tx = tr.x, ty = tr.y;
         splashTroops(tx, ty, b.def->splash, dmg, b.def);
-        effects.push_back({Fx::Flame, tx, ty, b.cx, b.cy, 0.35f, 0.35f});
+        effects.push_back({Fx::Pitch, tx, ty, b.cx, b.cy, 0.35f, 0.35f});
         return;
     }
     Projectile p;
@@ -428,7 +393,7 @@ void Battle::updateDefense(int bi, float dt) {
     p.sy = p.y = b.cy;
     p.tx = tr.x;
     p.ty = tr.y;
-    p.troop = b.def->proj == Proj::Rock ? -1 : b.target;
+    p.troop = b.def->proj == Proj::Ball ? -1 : b.target;  // ядро летит в точку, болт и пуля — в цель
     p.dur = std::max(0.1f, std::hypot(tr.x - b.cx, tr.y - b.cy) / b.def->projSpeed);
     p.dmg = dmg;
     p.splash = b.def->splash;
@@ -492,18 +457,13 @@ void Battle::spawnWave(Wave& w) {
             float y = std::clamp(cy + (rng.nextf() - 0.5f) * 3, 0.2f, kGrid - 0.2f);
             spawn(type, x, y);
         }
-    effects.push_back({Fx::Rift, cx, cy, 0, 0, 1.5f, 1.5f});
+    effects.push_back({Fx::Arrival, cx, cy, 0, 0, 1.5f, 1.5f});
     events.push_back({Ev::Wave, cx, cy, BType::Lantern});
 }
 
 void Battle::step(float dt) {
     if (ended) return;
     time += dt;
-    if (!eclipses.empty()) {
-        size_t before = eclipses.size();
-        eclipses.erase(std::remove_if(eclipses.begin(), eclipses.end(), [&](const Eclipse& e) { return e.until <= time; }), eclipses.end());
-        if (eclipses.size() != before) relight();
-    }
     for (auto& w : waves)
         if (!w.done && time >= w.t) { w.done = true; spawnWave(w); }
     if (!zones.empty()) {
@@ -511,7 +471,7 @@ void Battle::step(float dt) {
         for (const auto& z : zones) {
             if (z.kind != Spell::Heal) continue;
             for (auto& t : troops)
-                if (!t.dead && !t.def->haze && std::hypot(t.x - z.x, t.y - z.y) <= z.r) t.hp = std::min(t.maxHp, t.hp + t.maxHp * kHealPerSec * dt);
+                if (!t.dead && !t.def->raider && std::hypot(t.x - z.x, t.y - z.y) <= z.r) t.hp = std::min(t.maxHp, t.hp + t.maxHp * kHealPerSec * dt);
         }
     }
     size_t n = troops.size();
@@ -543,7 +503,7 @@ void Battle::checkEnd() {
         if (time >= duration || destroyed >= total || noForces) finish();
     } else {
         bool allSpawned = std::all_of(waves.begin(), waves.end(), [](const Wave& w) { return w.done; });
-        if (lanternDead || time >= duration || (allSpawned && aliveTroops() == 0)) finish();
+        if (hqDead || time >= duration || (allSpawned && aliveTroops() == 0)) finish();
     }
 }
 
@@ -552,15 +512,15 @@ void Battle::finish() {
     ended = true;
     int pct = percent(), stars = 0;
     if (pct >= 50) stars++;
-    if (lanternDead) stars++;
+    if (hqDead) stars++;
     if (pct >= 100) stars++;
     result = {};
     result.stars = mode == BattleMode::Attack ? stars : 0;
     result.pct = pct;
     result.lootOre = (long long)std::floor(lootOre);
     result.lootAether = (long long)std::floor(lootAether);
-    result.win = mode == BattleMode::Attack ? stars > 0 : !lanternDead;
-    result.lanternDead = lanternDead;
+    result.win = mode == BattleMode::Attack ? stars > 0 : !hqDead;
+    result.hqDead = hqDead;
     result.used = used;
 }
 

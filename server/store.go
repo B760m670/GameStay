@@ -121,7 +121,7 @@ func (s *Store) PlayerByID(id int64) (*Player, error) {
 	return scanPlayer(s.db.QueryRow(`SELECT `+playerCols+` FROM players WHERE id = ?`, id))
 }
 
-// SetSave сохраняет деревню и обновляет столбцы для поиска (уровень, рейтинг, Фонарь).
+// SetSave сохраняет деревню и обновляет столбцы для поиска (уровень, рейтинг, уровень острога).
 func (s *Store) SetSave(tx execer, id int64, save string, now int64) error {
 	sum, err := Summary(save)
 	if err != nil {

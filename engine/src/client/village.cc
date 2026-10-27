@@ -16,7 +16,7 @@ namespace V = lf::village;
 
 namespace {
 const uint32_t kInk = rgba(242, 236, 255), kInkSoft = rgba(176, 164, 214);
-const uint32_t kGold = rgba(255, 216, 107), kMuted = rgba(190, 178, 215), kOre = rgba(240, 160, 80), kAether = rgba(134, 220, 255), kBad = rgba(255, 140, 130);
+const uint32_t kGold = rgba(255, 216, 107), kMuted = rgba(190, 178, 215), kOre = rgba(214, 160, 100), kAether = rgba(240, 206, 120), kBad = rgba(255, 140, 130);
 
 const char* resIcon(lf::Res r) { return r == lf::Res::Ore ? "icon/ore" : r == lf::Res::Aether ? "icon/aether" : "icon/shard"; }
 
@@ -55,7 +55,7 @@ void App::enterVillage() {
     placing = Placing{};
     gest.reset();
     int LL = V::lanternLevel(S);
-    float R = lf::B(lf::BType::Lantern).lv(lf::B(lf::BType::Lantern).light, LL) + 4.5f;
+    float R = 9.5f + LL;  // обзор растёт вместе с поселением
     requestFocus(22, 22, R, 1.25f);
     gest.onDown = [this](Vec2 w, Vec2) {
         if (placing.active && placing.moveId < 0) {
@@ -128,7 +128,8 @@ void App::enterVillage() {
                 float s = (float)rec->def().size;
                 spawnFlyers(rec->def().produces, cam.toScreen(rec->x + s / 2, rec->y + s / 2, 60), got);
             }
-            if (got > 0) toast("+" + fmtNum(got) + (rec->def().produces == lf::Res::Ore ? " руды" : " Эфира"), rec->def().produces == lf::Res::Ore ? kOre : kAether);
+            if (got > 0) toast("+" + fmtNum(got) + (rec->def().produces == lf::Res::Ore ? " леса" : rec->def().produces == lf::Res::Aether ? " хлеба" : " серебра"),
+                                rec->def().produces == lf::Res::Ore ? kOre : rec->def().produces == lf::Res::Aether ? kAether : kGold);
             else toast("Хранилища полны", kBad);
         }
         if (selected != b) popAt[b] = t;
@@ -163,7 +164,7 @@ void App::updateLife(float dt) {
     static uint32_t seed = 12345;
     auto rnd = [&]() { seed = seed * 1664525u + 1013904223u; return (seed >> 8) / 16777216.f; };
     auto center = [](const lf::BuildingRec& b) { float s = b.def().size; return Vec2{b.x + s / 2, b.y + s / 2}; };
-    // рабочие: по одному на каждую стройку, остальные у хижин
+    // плотники: по одному на каждую стройку, остальные у изб
     std::vector<const lf::BuildingRec*> huts, jobs;
     for (const auto& b : S.buildings) {
         if (b.type == lf::BType::BuilderHut && b.level >= 1) huts.push_back(&b);
@@ -210,7 +211,7 @@ void App::updateLife(float dt) {
             a.wait -= dt;
         }
     }
-    // войска у лагеря
+    // войско у стана
     const lf::BuildingRec* camp = nullptr;
     for (const auto& b : S.buildings) if (b.type == lf::BType::Camp && b.level >= 1) { camp = &b; break; }
     size_t want = 0;
@@ -242,7 +243,7 @@ void App::updateLife(float dt) {
             a.wait = 1.5f + rnd() * 4;
         }
     }
-    // Фонарщик прогуливается у Фонаря
+    // Воевода прохаживается у острога
     bool on = V::heroUnlocked(S) && !S.buildings.empty();
     if (on) {
         Vec2 c = center(S.buildings[0]);
@@ -279,18 +280,11 @@ void App::updateLife(float dt) {
                 case lf::BType::Barracks:
                     if (rnd() < 0.35f) particles.push_back({c.x - 0.3f, c.y - 0.3f, b.type == lf::BType::Barracks ? 85.f : 40.f, 0.15f, -0.1f, 22, 2.6f, 2.6f, 9, gfx::rgba(150, 140, 160, 120), false});
                     break;
-                case lf::BType::AetherWell:
-                case lf::BType::AetherStore:
-                case lf::BType::Beacon:
-                    if (rnd() < 0.3f) particles.push_back({c.x + (rnd() - 0.5f) * 1.2f, c.y + (rnd() - 0.5f) * 1.2f, 20 + rnd() * 30, 0, 0, 18, 1.2f, 1.2f, 6, gfx::rgba(130, 220, 255, 220), true});
+                case lf::BType::AetherWell:  // мучная пыль у мельницы
+                    if (rnd() < 0.2f) particles.push_back({c.x + (rnd() - 0.5f) * 1.2f, c.y + (rnd() - 0.5f) * 1.2f, 10 + rnd() * 20, 0.1f, 0, 8, 1.6f, 1.6f, 5, gfx::rgba(235, 230, 215, 110), false});
                     break;
                 default: break;
             }
-        }
-        // светлячки во тьме вокруг поселения
-        if (particles.size() < 400 && rnd() < 0.7f) {
-            float a = rnd() * 6.283f, r = 10 + rnd() * 14;
-            particles.push_back({22 + std::cos(a) * r, 22 + std::sin(a) * r, 10 + rnd() * 30, (rnd() - 0.5f) * 0.4f, (rnd() - 0.5f) * 0.4f, (rnd() - 0.5f) * 6, 4, 4, 5, gfx::rgba(200, 255, 140, 200), true});
         }
     }
     world::updateParticles(particles, dt);
@@ -381,13 +375,12 @@ void App::villageFrame(float dt, const std::vector<input::Event>& worldEvents) {
 
 void App::drawVillageWorld() {
     world::drawGround(cam);
-    // свет считаем с учётом переносимой постройки
+    // тени — с учётом переносимой постройки
     lf::VillageState view = S;
     if (placing.active && placing.moveId >= 0)
         for (auto& b : view.buildings) if (b.id == placing.moveId) { b.x = placing.x; b.y = placing.y; }
     for (const auto& b : view.buildings) if (b.type != lf::BType::Wall && b.type != lf::BType::Trap) world::drawContactShadow(cam, (float)b.x, (float)b.y, (float)b.def().size);
     world::drawMeadow(cam, t);
-    world::drawFog(cam, V::sources(view), {}, t, 0.22f);
     world::drawWaterFx(cam, t);
     if (placing.active) {
         float s = (float)lf::B(placing.type).size;
@@ -492,7 +485,7 @@ void App::drawVillageHud() {
         ui::panel({x + 30, y + 4, 290, 60}, ui::Style::Dark);
         atlas::drawRect(atlas::get("ui/badge"), x - 4, y - 4, 76, 76);
         font::draw(std::to_string(S.level), x + 34, y + 15, 28, 0xffffffffu, font::Center);
-        std::string nm = online.ready() && !online.name().empty() ? online.name() : "Хранитель";
+        std::string nm = online.ready() && !online.name().empty() ? online.name() : "Приказчик";
         font::draw(nm, x + 82, y + 11, 18, 0xffffffffu);
         long long need = V::xpToNext(S.level);
         ui::bar({x + 82, y + 39, 130, 16}, (float)S.xp / need, rgba(110, 210, 255));
@@ -502,7 +495,7 @@ void App::drawVillageHud() {
         font::draw(std::to_string(S.rating), x + 268, y + 12, 19, 0xffffffffu);
         font::draw(lg.name, x + 268, y + 36, 14, kMuted);
     }
-    // под ней — состояние: строители, армия, ночь
+    // под ней — состояние: плотники, войско, набег
     {
         float x = safeX, y = top + 76;
         auto chip = [&](const char* ic, const std::string& label, const std::string& value, uint32_t vc) {
@@ -565,11 +558,11 @@ void App::drawVillageHud() {
         selectedOb = -1;
         resetArmed = false;
     };
-    // ── ночь: плашка-таймер под состоянием (касание — окно ночи) ──
+    // ── набег: плашка-таймер под состоянием (касание — окно набега) ──
     {
         bool due = V::nightDue(S, tnow);
-        std::string text = !V::nightsActive(S) ? "Ночи — после первой обороны"
-                         : due ? "Мгла у ворот!" : "Ночь через " + fmtTime((S.nightAt - tnow) / 1000.0);
+        std::string text = !V::nightsActive(S) ? "Набеги — после первой обороны"
+                         : due ? "Ватага у ворот!" : "Набег через " + fmtTime((S.nightAt - tnow) / 1000.0);
         float x = safeX, y = top + 126, w = 58 + font::measure(text, 17) + 18;
         ui::Rect r{x, y, w, 44};
         bool blink = due && std::fmod(t, 1.2f) < 0.8f;
@@ -589,7 +582,7 @@ void App::drawVillageHud() {
         if (ui::roundButton(cx, cy, 28, "icon/star", "Задания")) open(Modal::Tasks);
         ui::countBadge(cx + 22, cy - 22, ready);
         cy += 78;
-        if (ui::roundButton(cx, cy, 28, "icon/codex", "Хроника")) open(Modal::Codex);
+        if (ui::roundButton(cx, cy, 28, "icon/codex", "Летопись")) open(Modal::Codex);
     }
     // ── правая колонка: настройки ──
     if (ui::roundButton(cam.w - safeX - 36, 222, 28, "icon/menu", "Меню", ui::Style::Normal)) open(Modal::Menu);
@@ -859,14 +852,13 @@ void App::drawInfo() {
     };
     char a[32], c[32];
     row("Прочность", std::to_string(d.lv(d.hp, lv)), std::to_string(d.lv(d.hp, nx)));
-    if (d.isLight()) { std::snprintf(a, 32, "%.1f", d.lv(d.light, lv)); std::snprintf(c, 32, "%.1f", d.lv(d.light, nx)); row("Радиус света", a, c); }
-    if (d.produces != lf::Res::None) row("Добыча в минуту", std::to_string(d.lv(d.rate, lv)), std::to_string(d.lv(d.rate, nx)));
+    if (d.produces != lf::Res::None)
+        row(d.produces == lf::Res::Shards ? "Добыча в час" : "Добыча в минуту", std::to_string(d.lv(d.rate, lv)), std::to_string(d.lv(d.rate, nx)));
     if (d.produces != lf::Res::None) row("Вместимость", fmtNum(d.lv(d.cap, lv)), fmtNum(d.lv(d.cap, nx)));
     if (!d.storage.empty()) row("Хранит", fmtNum(d.lv(d.storage, lv)), fmtNum(d.lv(d.storage, nx)));
     if (!d.dmg.empty()) row("Урон за выстрел", std::to_string(d.lv(d.dmg, lv)), std::to_string(d.lv(d.dmg, nx)));
-    if (!d.dps.empty()) row("Урон луча в секунду", std::to_string((int)d.lv(d.dps, lv)), std::to_string((int)d.lv(d.dps, nx)));
     if (d.range > 0) { std::snprintf(a, 32, "%.1f", d.range); row("Дальность", a, a); }
-    if (!d.capacity.empty()) row("Мест для армии", std::to_string(d.lv(d.capacity, lv)), std::to_string(d.lv(d.capacity, nx)));
+    if (!d.capacity.empty()) row("Мест для войска", std::to_string(d.lv(d.capacity, lv)), std::to_string(d.lv(d.capacity, nx)));
 }
 
 void App::drawPlacingPanel() {
@@ -877,7 +869,7 @@ void App::drawPlacingPanel() {
     ui::panel({px, py, pw, ph});
     world::drawBuildingThumb(placing.type, px + 46, py + ph / 2, 70, 80);
     font::draw(d.name, px + 92, py + 10, 19, kGold);
-    font::draw(placing.valid ? "Перетащи на место. Строить можно только в свете." : placing.reason, px + 92, py + 36, 14,
+    font::draw(placing.valid ? "Перетащи на место и подтверди." : placing.reason, px + 92, py + 36, 14,
                placing.valid ? kMuted : kBad, font::Left, false);
     if (ui::button({px + 92, py + ph - 46, 190, 38}, "", ui::Style::Green, placing.valid)) confirmPlacing();
     font::draw("Построить", px + 104, py + ph - 37, 16, 0xffffffffu);
@@ -954,15 +946,15 @@ void App::drawArmy() {
     long long tnow = now();
     V::tick(S, tnow);
     int cap = V::campCapacity(S), have = V::armyHousing(S), q = V::queueHousing(S);
-    // строка 1: места в лагерях и заклинания
+    // строка 1: места в станах и приёмы
     ui::icon("icon/person", body.x + 16, body.y + 16, 30);
-    font::draw("Места в лагерях", body.x + 38, body.y + 4, 17, kInk, font::Left, false);
+    font::draw("Места в станах", body.x + 38, body.y + 4, 17, kInk, font::Left, false);
     ui::Rect bar{body.x + 200, body.y + 6, 260, 22};
     ui::bar(bar, cap ? (float)(have + q) / cap : 0, kGold);
     font::draw(std::to_string(have) + (q ? " + " + std::to_string(q) : "") + " / " + std::to_string(cap), bar.x + bar.w / 2, bar.y + 1, 16, 0xffffffffu, font::Center);
     auto spells = V::spellCharges(S.level);
     float sx = body.x + body.w - 300;
-    font::draw("Заклинания", sx, body.y + 4, 17, kInk, font::Left, false);
+    font::draw("Приёмы", sx, body.y + 4, 17, kInk, font::Left, false);
     sx += 110;
     for (lf::Spell sp : {lf::Spell::Heal, lf::Spell::Rage}) {
         bool open = spells.count(sp) > 0;
@@ -1004,7 +996,7 @@ void App::drawArmy() {
         ui::Rect r{cx, cy, cw, ch};
         atlas::draw9(atlas::get("ui/card"), cx, cy, cw, ch, 40, 12, rgba(255, 236, 190));
         world::drawTroopThumb(lf::TroopType::Hero, cx + cw / 2, cy + ch * 0.3f, ch * 0.48f);
-        font::draw("Фонарщик", cx + cw / 2, cy + ch * 0.56f, 16, kInk, font::Center, false);
+        font::draw("Воевода", cx + cw / 2, cy + ch * 0.56f, 16, kInk, font::Center, false);
         font::draw(open ? "Герой · ур. " + std::to_string(S.heroLevel) : "Герой", cx + cw / 2, cy + ch * 0.56f + 24, 14, kInkSoft, font::Center, false);
         if (open && S.heroLevel < maxL) {
             int cost = V::heroUpgradeCost(S.heroLevel + 1);
@@ -1015,7 +1007,7 @@ void App::drawArmy() {
         if (!open) ui::lockOverlay(r, "Острог ур. " + std::to_string(lf::kHeroUnlockLantern));
         if (ui::tapped(r)) {
             auto res = V::upgradeHero(S);
-            if (res.ok) { toast("Фонарщик: уровень " + std::to_string(S.heroLevel) + "!", kGold); audio::play("upgrade", 0.9f); save(); }
+            if (res.ok) { toast("Воевода: уровень " + std::to_string(S.heroLevel) + "!", kGold); audio::play("upgrade", 0.9f); save(); }
             else toast(res.reason, kBad);
         }
         cx += cw + gap;
@@ -1045,7 +1037,7 @@ void App::drawArmy() {
             ui::Rect pill{cx + 10, cy + ch - 46, cw - 20, 36};
             atlas::draw9(atlas::get("ui/btn_green"), pill.x, pill.y, pill.w, pill.h, 56, 18);
             costLabel(lf::Res::Aether, d.cost, pill.x + pill.w / 2, pill.y + 8, 17, S.aether >= d.cost ? 0xffffffffu : kBad, 1);
-        } else ui::lockOverlay(r, "Казарма ур. " + std::to_string(d.unlock));
+        } else ui::lockOverlay(r, "Ратная изба ур. " + std::to_string(d.unlock));
         if (ui::tapped(r)) {
             auto res = V::train(S, type, tnow);
             if (!res.ok) toast(res.reason, kBad);
@@ -1058,7 +1050,7 @@ void App::drawArmy() {
 void App::drawMap() {
     ui::Rect body;
     if (!modalFrame("Поход", 820, 384, body)) return;
-    const char* tabs[2] = {"Хроника Мглы", "Набег на соперника"};
+    const char* tabs[2] = {"Летопись острога", "Поход на соперника"};
     float tx = body.x;
     for (int i = 0; i < 2; i++) {
         float w = font::measure(tabs[i], 16) + 28;
@@ -1094,13 +1086,13 @@ void App::drawMap() {
         int LL = V::lanternLevel(S);
         int cost = lf::kRaidSearchCost[LL - 1];
         float y = y0 + 6;
-        for (const auto& l : font::wrap("Другие Хранители и Угасшие копят руду и Эфир. Найди соперника своего уровня, погаси его свет и забери добычу. "
-                                        "Высаженные войска расходуются.", 17, body.w - 20)) {
+        for (const auto& l : font::wrap("Соседние остроги и станы ватаги копят лес и хлеб. Найди соперника своего уровня, разори его хозяйство "
+                                        "и забери добычу. Высаженные войска в острог не возвращаются.", 17, body.w - 20)) {
             font::draw(l, body.x + 6, y, 17, kInk, font::Left, false);
             y += font::lineHeight(17);
         }
         y += 10;
-        font::draw("Армия: " + std::to_string(V::armyHousing(S)) + " мест · Затмений в бою: " + std::to_string(lf::eclipseCharges(LL)), body.x + 6, y, 15, kInkSoft, font::Left, false);
+        font::draw("Войско: " + std::to_string(V::armyHousing(S)) + " мест", body.x + 6, y, 15, kInkSoft, font::Left, false);
         y += 30;
         const auto& lg = V::league(S.rating);
         int li = V::leagueIndex(S.rating);
@@ -1115,7 +1107,7 @@ void App::drawMap() {
         ui::Rect br{body.x + body.w / 2 - 150, body.y + body.h - 70, 300, 56};
         if (ui::button(br, "", ui::Style::Gold)) {
             if (V::armyHousing(S) == 0) toast("Армия пуста — обучи войска", kBad);
-            else if (S.ore < cost) toast("Не хватает руды на поиск", kBad);
+            else if (S.ore < cost) toast("Не хватает леса на сборы в поход", kBad);
             else { S.ore -= cost; modal = Modal::None; startRaid(); }
         }
         font::draw("Искать соперника", br.x + 22, br.y + 16, 19, 0xffffffffu);
@@ -1125,16 +1117,16 @@ void App::drawMap() {
 
 void App::drawNight() {
     ui::Rect body;
-    if (!modalFrame("Ночь Мглы", 620, 330, body)) return;
+    if (!modalFrame("Набег ватаги", 620, 330, body)) return;
     bool due = V::nightDue(S, now());
     float y = body.y + 4;
-    std::string text = "Каждую ночь Мгла проверяет твой свет. Порождения выходят из тьмы со всех сторон, а оборона сражается сама. "
-                       "Если Острог устоит до рассвета — получишь Осколки и ресурсы. Разрушенные хранилища теряют часть запасов.";
+    std::string text = "Ватага Кудеяра время от времени приходит проверить острог: разбойники выходят из леса с любой стороны, "
+                       "а оборона бьётся сама. Устоит острог — получишь серебро и припасы. Разорённые склады теряют часть запасов.";
     for (const auto& l : font::wrap(text, 17, body.w - 10)) { font::draw(l, body.x + 4, y, 17, kInk, font::Left, false); y += font::lineHeight(17); }
     y += 8;
-    font::draw("Пережито ночей: " + std::to_string(S.nights) + (due ? ". Мгла уже у порога!" : ". Следующая через " + fmtTime((S.nightAt - now()) / 1000.0)),
+    font::draw("Отбито набегов: " + std::to_string(S.nights) + (due ? ". Ватага уже у ворот!" : ". Следующий через " + fmtTime((S.nightAt - now()) / 1000.0)),
                body.x + 4, y, 15, kInkSoft, font::Left, false);
-    if (ui::button({body.x + body.w - 260, body.y + body.h - 52, 260, 48}, due ? "Встретить ночь" : "Призвать ночь сейчас", ui::Style::Gold)) {
+    if (ui::button({body.x + body.w - 260, body.y + body.h - 52, 260, 48}, due ? "Встретить ватагу" : "Выйти на бой сейчас", ui::Style::Gold)) {
         modal = Modal::None;
         startNight();
     }
@@ -1142,7 +1134,7 @@ void App::drawNight() {
 
 void App::drawCodex() {
     ui::Rect body;
-    if (!modalFrame("Хроника", 760, 380, body)) return;
+    if (!modalFrame("Летопись", 760, 380, body)) return;
     const auto& cx = lf::campaign::codex();
     std::vector<const lf::CodexEntry*> entries;
     for (const auto& k : S.codex) { auto it = cx.find(k); if (it != cx.end()) entries.push_back(&it->second); }
@@ -1157,7 +1149,7 @@ void App::drawCodex() {
     }
     int locked = (int)cx.size() - (int)entries.size();
     float by = body.y + body.h - 40;
-    if (locked > 0) font::draw("Ещё " + std::to_string(locked) + " записей скрыто во Мгле — их открывают походы", body.x + 140, by + 10, 15, kInkSoft, font::Left, false);
+    if (locked > 0) font::draw("Ещё " + std::to_string(locked) + " записей ещё впереди — их открывают походы", body.x + 140, by + 10, 15, kInkSoft, font::Left, false);
     if (pages > 1) {
         if (ui::button({body.x + body.w - 200, by, 44, 38}, "<", ui::Style::Dark, codexPage > 0)) codexPage--;
         font::draw(std::to_string(codexPage + 1) + "/" + std::to_string(pages), body.x + body.w - 128, by + 9, 16, kInk, font::Center, false);

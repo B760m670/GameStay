@@ -1,5 +1,5 @@
 #pragma once
-// Игровое ядро Lanternfall: конфигурация, деревня, детерминированный бой, генерация баз, кампания.
+// Игровое ядро «Острога»: конфигурация, поселение, детерминированный бой, генерация баз, кампания.
 // Не зависит от движка — тестируется отдельно и пригодно для будущего сервера.
 #include <array>
 #include <cstdint>
@@ -13,32 +13,37 @@ namespace lf {
 constexpr int kGrid = 44;
 constexpr int kBorder = 2;
 constexpr int kMaxLantern = 5;      // пока игра до 5-го уровня острога
-constexpr int kBaseArmySlots = 10;  // места для отряда без лагерей (стартовые 10 факельщиков)
+constexpr int kBaseArmySlots = 10;  // места для отряда без стана (стартовые 10 ополченцев)
 constexpr float kBattleTime = 180.f;
 constexpr float kNightTime = 90.f;
 constexpr long long kNightIntervalMs = 20LL * 60 * 1000;
 constexpr long long kFirstNightMs = 8LL * 60 * 1000;
-constexpr float kEclipseRadius = 3.5f;
-constexpr float kEclipseDuration = 10.f;
-// Заклинания атакующего: зона на земле на несколько секунд.
+// Приёмы атакующего (Лекарь, Боевой рог): зона на земле на несколько секунд.
 enum class Spell { Heal, Rage };
 constexpr float kSpellRadius = 3.f;
 constexpr float kSpellDuration = 8.f;
 constexpr float kHealPerSec = 0.12f;  // доля здоровья в секунду
 constexpr float kRageMult = 1.6f;     // скорость и темп атак
-// Герой (Фонарщик): один на бой, способность «Вспышка Фонаря» — ослепляет оборону и подлечивает отряды вокруг.
+// Герой (Воевода): один на бой, способность «Боевой клич» — отряды вокруг подлечиваются и на время свирепеют.
 constexpr int kHeroUnlockLantern = 2;
 constexpr int kHeroMaxLevel = 10;
-constexpr float kHeroFlashRadius = 5.f;
-constexpr float kHeroStun = 5.f;
-constexpr float kHeroFlashHeal = 0.35f;
+constexpr float kHeroCryRadius = 5.f;
+constexpr float kHeroCryHeal = 0.35f;
+constexpr float kHeroCryTime = 6.f;  // сколько секунд действует ярость клича
 
+// Имена типов исторические (номера записаны в сохранениях): Lantern — Острог, Beacon — Торг, OreMine — Лесосека,
+// AetherWell — Мельница, OreStore — Лесной двор, AetherStore — Амбар, Ballista — Самострел, Brazier — Смоляной котёл,
+// Catapult — Пушка, Prism — Затинная пищаль, Wall — Частокол, Workshop — Кузница, Trap — Волчья яма.
 enum class BType { Lantern, Beacon, OreMine, AetherWell, OreStore, AetherStore, Barracks, Camp, BuilderHut, Ballista, Brazier, Catapult, Prism, Wall, Workshop, Trap, Count };
+// Ресурсы: Ore — лес (брёвна), Aether — хлеб, Shards — серебро.
 enum class Res { Ore, Aether, Shards, None };
+// Отряды игрока: Torch — Ополченец, Archer — Лучник, Shield — Щитник, Sapper — Таран, Shade — Всадник, Owl — Стрелец.
+// Разбойники (набеги на острог): Morok — Разбойник, Brute — Атаман, Leech — Поджигатель, Wraith — Лихой стрелок.
+// Hero — Воевода.
 enum class TroopType { Torch, Archer, Shield, Sapper, Shade, Owl, Morok, Brute, Leech, Wraith, Hero, Count };
-enum class Target { Any, Defense, Light, Wall };
-enum class Proj { None, Bolt, Flame, Rock, Arrow, Feather, Wisp };
-enum class Category { Core, Light, Economy, Army, Defense, Wall };
+enum class Target { Any, Defense, Economy, Wall };
+enum class Proj { None, Bolt, Pitch, Ball, Arrow, Bullet };
+enum class Category { Core, Economy, Army, Defense, Wall };
 
 constexpr int kBTypes = (int)BType::Count;
 constexpr int kTroopTypes = (int)TroopType::Count;
@@ -53,15 +58,14 @@ struct BuildingDef {
     Category category;
     Res costRes;
     std::vector<int> cost, time, hp, storage, rate, cap, capacity, dmg;
-    std::vector<float> light, dps;
     Res produces = Res::None, stores = Res::None;
-    float range = 0, minRange = 0, cd = 0, splash = 0, rampMax = 0, rampRate = 0, projSpeed = 0;
-    bool ground = false, air = false, beam = false;
+    float range = 0, minRange = 0, cd = 0, splash = 0, projSpeed = 0;
+    bool ground = false, air = false;
     bool trap = false;  // скрытая ловушка: срабатывает один раз, не считается в разрушении
     Proj proj = Proj::None;
 
-    bool isLight() const { return !light.empty(); }
     bool isDefense() const { return category == Category::Defense; }
+    bool isEconomy() const { return produces != Res::None || stores != Res::None; }
     template <class T> T lv(const std::vector<T>& a, int level) const {
         if (a.empty()) return T{};
         int i = level - 1;
@@ -77,19 +81,20 @@ struct TroopDef {
     const char* name;
     const char* desc;
     uint32_t color;  // RGBA
-    bool haze = false;
+    bool raider = false;  // разбойник из набега, а не отряд игрока
     int housing = 1, cost = 0, time = 0, unlock = 1;
-    float hp = 1, dmg = 0, cd = 1, range = 0.6f, speed = 1, splash = 0, lightMult = 1;
+    float hp = 1, dmg = 0, cd = 1, range = 0.6f, speed = 1;
+    float econMult = 1;  // множитель урона по хозяйству (лесосеки, мельницы, склады, торг)
+    float wallMult = 1;  // множитель урона по частоколу
     Target target = Target::Any;
     Proj ranged = Proj::None;
-    bool air = false, suicide = false, stealth = false;
+    bool air = false;
 };
 
 const BuildingDef& B(BType t);
 const TroopDef& T(TroopType t);
 int limit(BType t, int lantern);
 int unlockLantern(BType t);
-int eclipseCharges(int lantern);
 extern const int kRaidSearchCost[6];
 extern const int kBaseLoot[6];
 extern const int kHutCost[5];
@@ -105,15 +110,10 @@ private:
     uint32_t a_;
 };
 
-struct LightSource { float x, y, r; int id; };
-struct Eclipse { float x, y, r, until; };
 struct SpellZone { Spell kind; float x, y, r, until; };
 
 float distToRect(float px, float py, float x, float y, float size);
 bool rectsOverlap(int ax, int ay, int as, int bx, int by, int bs);
-bool isLit(float px, float py, const std::vector<LightSource>& src, const std::vector<Eclipse>* ecl = nullptr);
-std::vector<uint8_t> litGrid(const std::vector<LightSource>& src, const std::vector<Eclipse>* ecl = nullptr);
-bool footprintLit(int x, int y, int size, const std::vector<LightSource>& src);
 
 // ---------- Деревня ----------
 struct BuildingRec {
@@ -130,11 +130,11 @@ struct TrainItem { TroopType type; float left; };
 
 struct Stats {
     int attacks = 0, wins = 0, nightsWon = 0, nightsLost = 0;
-    long long built = 0, upgrades = 0, oreCollected = 0, aetherCollected = 0, beaconsDestroyed = 0, stars = 0, trained = 0;
+    long long built = 0, upgrades = 0, oreCollected = 0, aetherCollected = 0, hqsDestroyed = 0, stars = 0, trained = 0;
 };
 
 // Задания: три ступени, награда за каждую.
-enum class Metric { Built, Upgrades, Ore, Aether, Beacons, Stars, Nights, Trained, Lantern };
+enum class Metric { Built, Upgrades, Ore, Aether, Hqs, Stars, Nights, Trained, Lantern };
 struct TaskDef {
     const char* id;
     const char* title;
@@ -222,7 +222,6 @@ int barracksLevel(const VillageState& S);
 int barracksCount(const VillageState& S);
 double collectorAmount(const BuildingRec& b, long long now);
 long long collect(VillageState& S, int id, long long now);
-std::vector<LightSource> sources(const VillageState& S, int excludeId = -1);
 Result canPlace(const VillageState& S, BType t, int x, int y, int ignoreId = -1);
 std::pair<Res, int> buildCost(const VillageState& S, BType t);
 Result canBuild(const VillageState& S, BType t, long long now);
@@ -237,8 +236,8 @@ Result train(VillageState& S, TroopType t, long long now);
 void cancelTrain(VillageState& S, int index);
 void tick(VillageState& S, long long now);
 bool nightDue(const VillageState& S, long long now);
-bool nightsActive(const VillageState& S);
-bool hqRuined(const VillageState& S);  // игра начинается с руин главного здания  // ночи начинаются только после первой оборонительной постройки
+bool nightsActive(const VillageState& S);  // набеги начинаются только после первой оборонительной постройки
+bool hqRuined(const VillageState& S);  // игра начинается с руин главного здания
 // Опыт: сколько нужно до следующего уровня, начислить (с наградой за уровни).
 long long xpToNext(int level);
 int addXp(VillageState& S, long long amount);
@@ -264,13 +263,13 @@ Result clearObstacle(VillageState& S, int id, int* shards = nullptr);
 void seedObstacles(VillageState& S, int seed, int count);
 // Герой.
 bool heroUnlocked(const VillageState& S);
-int heroMaxLevel(const VillageState& S);  // ограничен уровнем Фонаря
-int heroUpgradeCost(int toLevel);         // Эфир
+int heroMaxLevel(const VillageState& S);  // ограничен уровнем острога
+int heroUpgradeCost(int toLevel);         // хлеб
 float heroMult(int level);
 Result upgradeHero(VillageState& S);
 // Итог набега на другого игрока (общая функция для клиента и сервера).
 struct RaidOutcome { long long ore = 0, aether = 0, shards = 0; int ratingDelta = 0; bool newLeague = false; };
-RaidOutcome applyRaid(VillageState& S, const BattleResult& r, int beaconsDestroyed);
+RaidOutcome applyRaid(VillageState& S, const BattleResult& r);
 // Защитник теряет добычу из хранилищ и рейтинг (или получает, если атака отбита).
 int applyDefense(VillageState& D, const BattleResult& r);
 // Рейтинг и лиги.
@@ -299,13 +298,13 @@ struct BBuilding {
     BType type;
     int x, y, level, size;
     const BuildingDef* def;
-    float hp, maxHp, cx, cy, lightR, cd = 0, beamT = 0, hitT = 0, angle = 2.35f, stunT = 0;
+    float hp, maxHp, cx, cy, cd = 0, hitT = 0, angle = 2.35f;
     float lootOre = 0, lootAether = 0;
-    bool dead = false, powered = true;
+    bool dead = false;
     int target = -1;  // индекс войска
     bool isDefense() const { return def->isDefense(); }
     bool isWall() const { return type == BType::Wall; }
-    bool isLight() const { return def->isLight(); }
+    bool isEconomy() const { return def->isEconomy(); }
     bool isTrap() const { return def->trap; }
     bool isStructure() const { return !isWall() && !isTrap(); }  // то, что считается в проценте разрушения
 };
@@ -315,7 +314,8 @@ struct BTroop {
     TroopType type;
     const TroopDef* def;
     float x, y, hp, maxHp, dmgMult = 1, cd = 0, jx, jy, angle = 0, hitT = 0, bob, animT = 0;
-    bool air, dead = false, attacking = false, hidden = false;
+    float rageT = 0;  // сколько ещё действует ярость от клича Воеводы
+    bool air, dead = false, attacking = false;
     int target = -1, wall = -1;  // индексы построек
     std::vector<int> path;
     bool hasPath = false;
@@ -330,10 +330,10 @@ struct Projectile {
     bool fromAir = false, done = false;
 };
 
-enum class Fx { Boom, Blast, Hit, Poof, Flame, EclipseFx, Rift, Flash };
+enum class Fx { Boom, Blast, Hit, Poof, Pitch, Smoke, Arrival, Cry };
 struct Effect { Fx kind; float x, y, sx = 0, sy = 0, life, max, r = 0; bool air = false; uint32_t color = 0; };
 
-enum class Ev { LightsOut, Lantern, Wave, EclipseCast, Destroyed, Shot, Hit, Deploy, SpellCast, Trap, HeroFlash };
+enum class Ev { Hq, Wave, Destroyed, Shot, Hit, Deploy, SpellCast, Trap, HeroCry };
 struct BattleEvent { Ev kind; float x, y; BType type; };
 
 struct Wave { float t; std::map<TroopType, int> units; bool done = false; };
@@ -341,7 +341,7 @@ struct Wave { float t; std::map<TroopType, int> units; bool done = false; };
 struct BattleResult {
     int stars = 0, pct = 0;
     long long lootOre = 0, lootAether = 0;
-    bool win = false, lanternDead = false;
+    bool win = false, hqDead = false;
     std::map<TroopType, int> used;
 };
 
@@ -350,13 +350,12 @@ struct BattleOptions {
     std::vector<LayoutItem> layout;
     std::map<TroopType, int> army;
     std::map<TroopType, int> troopLevels;  // уровни отрядов атакующего (1 по умолчанию)
-    int eclipseCharges = 0;
     std::map<Spell, int> spells;  // заряды заклинаний атакующего
     int heroLevel = 0;            // 0 — героя нет
     int seed = 1;
     float duration = kBattleTime;
     std::vector<Wave> waves;
-    float hazeMult = 1.f;
+    float raidMult = 1.f;  // сила разбойников в набеге
 };
 
 class Battle {
@@ -365,17 +364,15 @@ public:
     void step(float dt);
     bool canDeploy(float x, float y) const;
     bool deploy(TroopType t, float x, float y);
-    bool castEclipse(float x, float y);
     bool castSpell(Spell s, float x, float y);
     bool deployHero(float x, float y);
     bool heroAbility();
     void finish();
     BattleResult simulate(float maxTime = 400.f, float dt = 1.f / 30.f);
-    bool litAt(float x, float y) const;
     int aliveTroops() const;
     int poolLeft() const;
     int percent() const;
-    void relight();
+    void updateDeployZone();  // где нельзя высаживаться: постройки и клетка вокруг них
 
     BattleMode mode;
     float time = 0, duration;
@@ -384,23 +381,20 @@ public:
     std::vector<BTroop> troops;
     std::vector<Projectile> projectiles;
     std::vector<Effect> effects;
-    std::vector<Eclipse> eclipses;
     std::vector<SpellZone> zones;
     std::map<Spell, int> spells;
     int heroLevel = 0, heroIdx = -1;  // индекс героя в troops после высадки
     bool heroAbilityUsed = false;
     std::vector<BattleEvent> events;
-    int eclipseChargesLeft;
     std::map<TroopType, int> pool, used;
     float lootOre = 0, lootAether = 0, lootTotalOre = 0, lootTotalAether = 0;
     std::vector<int> tileOwner;
-    std::vector<uint8_t> lit;
-    std::vector<LightSource> sources;
+    std::vector<uint8_t> noDeploy;
     int destroyed = 0, total = 0;
-    bool lanternDead = false, ended = false;
+    bool hqDead = false, ended = false;
     BattleResult result;
     std::vector<Wave> waves;
-    float hazeMult;
+    float raidMult;
     std::map<TroopType, int> troopLevels;
 
 private:
@@ -429,13 +423,13 @@ std::vector<int> findPath(int sx, int sy, int gx, int gy, int gs, const std::vec
 namespace basegen {
 std::string rivalName(Rng& rng);
 std::vector<LayoutItem> generate(int LL, int seed, const std::map<BType, int>* counts = nullptr, float richness = 1.f, int levelBias = 0);
-struct Night { std::vector<Wave> waves; float hazeMult; };
+struct Night { std::vector<Wave> waves; float raidMult; };
 Night nightWaves(int LL, int nights, int seed);
 }
 
 // ---------- Запись боя (продолжение после закрытия приложения) ----------
 namespace replay {
-enum class Act { Deploy, Eclipse, Spell, Hero, HeroAbility };
+enum class Act { Deploy, Reserved, Spell, Hero, HeroAbility };  // номера записаны в сохранённых боях
 struct Action { int step = 0; Act kind = Act::Deploy; int arg = 0; float x = 0, y = 0; };
 struct Record { BattleOptions opts; std::vector<Action> actions; int steps = 0; };
 bool apply(Battle& B, const Action& a);
@@ -446,7 +440,7 @@ bool load(const std::string& s, Record& r);
 }
 
 // ---------- Кампания ----------
-enum class Speaker { Narrator, Vira, Keeper, Haze, King };
+enum class Speaker { Narrator, Elisey, Player, Kudeyar, Voevoda };
 struct Line { Speaker who; const char* text; };
 struct Mission {
     const char* id;

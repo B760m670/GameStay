@@ -21,7 +21,7 @@ public:
 
     // Аккаунт создаётся при первом запуске с сетью.
     void ensureAccount();
-    // Облачное сохранение; onDebt — сколько руды/Эфира отняли налётчики, пока игрок был в игре; rating — серверный.
+    // Облачное сохранение; onDebt — сколько леса и хлеба отняли налётчики, пока игрок был в игре; rating — серверный.
     void pushSave(const std::string& save, std::function<void(bool ok, long long ore, long long aether, int rating)> onDone);
     // Соперник для набега: снимок базы и seed.
     struct Match { long long id = 0; int seed = 0; std::string snapshot, name; int rating = 0, level = 0, lantern = 1; };

@@ -1,5 +1,5 @@
 #pragma once
-// Отрисовка мира: земля, туман Мглы и свет, постройки, юниты, снаряды, эффекты.
+// Отрисовка мира: земля, постройки, юниты, снаряды, эффекты.
 #include <string>
 #include <vector>
 
@@ -18,7 +18,7 @@ void drawGround(const Camera& cam);
 void drawContactShadow(const Camera& cam, float x, float y, float size);
 // Детали луга (трава, цветы, камешки) — под постройками.
 void drawMeadow(const Camera& cam, float t);
-// Блики на ручье и рябь на пруду (поверх тумана — лунный свет на воде).
+// Блики на ручье и рябь на пруду.
 void drawWaterFx(const Camera& cam, float t);
 // Ручей вокруг поселения: середина русла (для обеих сторон) и расстояние до воды (< 0 — в воде).
 float streamCenter(float t);
@@ -27,21 +27,17 @@ struct Decor { const char* sprite; float x, y; int size; float depth; int fx = 0
 // Лес и скалы за краем поля (сортируются вместе с постройками по глубине).
 const std::vector<Decor>& decor();
 void drawDecor(const Camera& cam, const Decor& d, float t);
-// Освещённость точки мира по последнему drawFog (0 — тьма, 1 — свет) и цвет base, затенённый по ней.
-float lightAt(float x, float y);
-uint32_t lightTint(float x, float y, uint32_t base);
-// Туман: темнота везде, кроме кругов света. Плюс тёплое свечение источников.
-void drawFog(const Camera& cam, const std::vector<lf::LightSource>& src, const std::vector<lf::Eclipse>& ecl, float t,
-             float darkness = 0.74f, bool forbidTint = false);
+// Освещение сцены: цвет, на который умножаются постройки, юниты и декор (день — белый, сумерки набега — темнее).
+void setAmbient(uint32_t color);
+uint32_t ambientTint(uint32_t base);
 
 struct BuildingLook {
-    float alpha = 1, dim = 1;      // dim < 1 — затемнение (обесточена)
-    bool selected = false, dead = false, unpowered = false, constructing = false;
+    float alpha = 1, dim = 1;      // dim < 1 — затемнение
+    bool selected = false, dead = false, constructing = false;
     int ghost = 0;                 // 1 — можно поставить, -1 — нельзя
     float hitFlash = 0;
     float collapse = -1;           // 0..1 — идёт обрушение разрушенной постройки
     float angle = 0.785f;          // куда смотрит поворотная часть (мировой угол), по умолчанию — к зрителю
-    float stunned = 0;             // > 0 — ослеплена Вспышкой
     float pop = -1;                // 0..1 — «пружина» (выбор, установка, завершение стройки)
 };
 void drawBuilding(const Camera& cam, lf::BType type, float x, float y, int level, const BuildingLook& look, float t);
@@ -63,9 +59,8 @@ void drawParticle(const Camera& cam, const Particle& p);
 // Мягкое аддитивное свечение в экранных координатах.
 void glowSpot(float x, float y, float r, uint32_t color);
 void drawProjectile(const Camera& cam, const lf::Projectile& p);
-void drawBeam(const Camera& cam, const lf::BBuilding& b, const lf::BTroop& tr);
 void drawEffect(const Camera& cam, const lf::Effect& e, float t);
-// Зона заклинания на земле: кольцо, свечение, искры.
+// Зона приёма (Лекарь, Боевой рог) на земле: кольцо и частицы.
 void drawSpellZone(const Camera& cam, const lf::SpellZone& z, float battleTime, float t);
 
 // Иконка-миниатюра постройки/юнита для UI.
