@@ -202,7 +202,7 @@ void App::battleFrame(float dt, const std::vector<input::Event>& worldEvents) {
             default: break;
         }
         if (ev.kind == lf::Ev::LightsOut) toast("Светоч погас — сектор во тьме!", kGood);
-        else if (ev.kind == lf::Ev::Lantern) toast(bt.kind == BattleKind::Night ? "Наш Штаб пал!" : "Штаб врага разрушен!", bt.kind == BattleKind::Night ? kBad : kGood);
+        else if (ev.kind == lf::Ev::Lantern) toast(bt.kind == BattleKind::Night ? "Наш Острог пал!" : "Острог врага разрушен!", bt.kind == BattleKind::Night ? kBad : kGood);
         else if (ev.kind == lf::Ev::Wave) toast("Мгла выходит из тьмы!", kBad);
     }
     B.events.clear();
@@ -383,7 +383,7 @@ void App::drawBattleHud() {
 
 void App::drawResult() {
     bool night = bt.kind == BattleKind::Night;
-    const char* title = night ? (bt.res.win ? "Рассвет" : "Штаб пал") : (bt.res.win ? "Победа!" : "Поражение");
+    const char* title = night ? (bt.res.win ? "Рассвет" : "Острог пал") : (bt.res.win ? "Победа!" : "Поражение");
     if (bt.awaitingServer) {  // онлайн-набег: итог считает сервер
         ui::block({0, 0, cam.w, cam.h});
         gfx::fillRect(0, 0, cam.w, cam.h, rgba(5, 3, 14, 160));
@@ -417,7 +417,7 @@ void App::drawResult() {
         cy += 30;
     } else {
         for (const auto& l : font::wrap(bt.res.win ? "Ты удержал свет до рассвета. Мгла отступила — до следующей ночи."
-                                                   : "Мгла захлестнула поселение. Штаб отстроят, но часть запасов утеряна.", 17, w - 40)) {
+                                                   : "Мгла захлестнула поселение. Острог отстроят, но часть запасов утеряна.", 17, w - 40)) {
             font::draw(l, x + w / 2, cy, 17, 0xffffffffu, font::Center, false);
             cy += font::lineHeight(17);
         }

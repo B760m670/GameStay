@@ -39,7 +39,7 @@ void finishBuild(BuildingRec& b, long long now) {
 VillageState create(long long now) {
     VillageState S;
     S.created = now;
-    S.ore = 1000;      // ровно вместимость Штаба 1-го уровня: складов ещё нет
+    S.ore = 1000;      // ровно вместимость Острога 1-го уровня: складов ещё нет
     S.aether = 1000;
     S.shards = 15;
     S.trainTickAt = now;
@@ -103,7 +103,7 @@ bool spawnObstacle(VillageState& S, Rng& rng) {
     int s = obstacleSize(k);
     for (int attempt = 0; attempt < 60; attempt++) {
         int x = kBorder + rng.range(kGrid - 2 * kBorder - s + 1), y = kBorder + rng.range(kGrid - 2 * kBorder - s + 1);
-        if (std::hypot(x + s / 2.f - 22, y + s / 2.f - 22) < 6) continue;  // не у самого Штаба
+        if (std::hypot(x + s / 2.f - 22, y + s / 2.f - 22) < 6) continue;  // не у самого Острога
         if (!cellsFree(S, x, y, s)) continue;
         S.obstacles.push_back({S.nextId++, k, x, y});
         return true;
@@ -170,7 +170,7 @@ long long addRes(VillageState& S, Res r, long long amount) {
 }
 
 Builders builders(const VillageState& S, long long now) {
-    int total = 1, busy = 0;  // один строитель при Штабе, остальные — из хижин
+    int total = 1, busy = 0;  // один строитель при Остроге, остальные — из хижин
     for (const auto& b : S.buildings) {
         if (b.type == BType::BuilderHut && b.level >= 1) total++;
         if (b.busyUntil > now) busy++;
@@ -272,8 +272,8 @@ Result canBuild(const VillageState& S, BType t, long long now) {
     if (hqRuined(S)) return Result::no(std::string("Сначала восстанови: ") + B(BType::Lantern).name);
     int LL = lanternLevel(S);
     int lim = limit(t, LL);
-    if (lim == 0) return Result::no("Нужен Штаб ур. " + std::to_string(unlockLantern(t)));
-    if (countOf(S, t) >= lim) return Result::no("Лимит " + std::to_string(lim) + " — улучши Штаб");
+    if (lim == 0) return Result::no("Нужен Острог ур. " + std::to_string(unlockLantern(t)));
+    if (countOf(S, t) >= lim) return Result::no("Лимит " + std::to_string(lim) + " — улучши Острог");
     auto c = buildCost(S, t);
     if (S.res(c.first) < c.second) return Result::no("Не хватает ресурсов");
     if (B(t).time[0] > 0 && builders(S, now).free < 1) return Result::no("Все строители заняты");
@@ -316,7 +316,7 @@ UpgradeInfo upgradeInfo(const VillageState& S, int id, long long now) {
     int next = b->level + 1;
     if (b->busyUntil > now) { info.reason = "Уже строится"; return info; }
     if (next > d.maxLevel) { info.reason = "Максимальный уровень"; info.max = true; return info; }
-    if (next > maxLevelAllowed(b->type, lanternLevel(S))) { info.reason = "Нужен Штаб выше"; return info; }
+    if (next > maxLevelAllowed(b->type, lanternLevel(S))) { info.reason = "Нужен Острог выше"; return info; }
     info.cost = d.cost[next - 1];
     info.time = d.time[next - 1];
     info.res = d.costRes;
@@ -440,9 +440,9 @@ int heroUpgradeCost(int toLevel) { return 1500 * (toLevel - 1) * (toLevel - 1) +
 float heroMult(int level) { return 1.f + 0.1f * (std::max(1, level) - 1); }
 
 Result upgradeHero(VillageState& S) {
-    if (!heroUnlocked(S)) return Result::no("Герой откроется на Штабе ур. " + std::to_string(kHeroUnlockLantern));
+    if (!heroUnlocked(S)) return Result::no("Герой откроется на Остроге ур. " + std::to_string(kHeroUnlockLantern));
     int next = S.heroLevel + 1;
-    if (next > heroMaxLevel(S)) return Result::no(S.heroLevel >= kHeroMaxLevel ? "Максимальный уровень" : "Улучши Штаб");
+    if (next > heroMaxLevel(S)) return Result::no(S.heroLevel >= kHeroMaxLevel ? "Максимальный уровень" : "Улучши Острог");
     if (S.aether < heroUpgradeCost(next)) return Result::no("Не хватает Эфира");
     S.aether -= heroUpgradeCost(next);
     S.heroLevel = next;
@@ -505,7 +505,7 @@ const std::vector<TaskDef>& taskDefs() {
         {"stars", "Звёздный налёт", "Получи звёзд в боях: %s", Metric::Stars, {5, 30, 150}, {3, 8, 20}, {15, 40, 100}},
         {"nights", "Страж ночи", "Переживи ночей Мглы: %s", Metric::Nights, {1, 10, 50}, {3, 8, 20}, {15, 40, 100}},
         {"trained", "Наставник", "Обучи войск: %s", Metric::Trained, {20, 200, 1000}, {2, 5, 10}, {10, 25, 60}},
-        {"lantern", "Растущий город", "Улучши Штаб до уровня %s", Metric::Lantern, {2, 3, 5}, {5, 12, 30}, {25, 60, 150}},
+        {"lantern", "Растущий город", "Улучши Острог до уровня %s", Metric::Lantern, {2, 3, 5}, {5, 12, 30}, {25, 60, 150}},
     };
     return v;
 }

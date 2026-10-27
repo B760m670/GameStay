@@ -12,8 +12,8 @@ namespace lf {
 
 constexpr int kGrid = 44;
 constexpr int kBorder = 2;
-constexpr int kMaxLantern = 5;
-constexpr int kBaseArmySlots = 10;  // места для отряда без лагерей (стартовые 10 факельщиков)  // пока игра до 5-го уровня штаба
+constexpr int kMaxLantern = 5;      // пока игра до 5-го уровня острога
+constexpr int kBaseArmySlots = 10;  // места для отряда без лагерей (стартовые 10 факельщиков)
 constexpr float kBattleTime = 180.f;
 constexpr float kNightTime = 90.f;
 constexpr long long kNightIntervalMs = 20LL * 60 * 1000;

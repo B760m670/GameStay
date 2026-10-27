@@ -15,7 +15,7 @@ std::string rivalName(Rng& rng) {
 }
 
 std::vector<LayoutItem> generate(int LL, int seed, const std::map<BType, int>* counts, float richness, int levelBias) {
-    LL = std::clamp(LL, 1, kMaxLantern);  // походы со Штабом выше предела игры строятся на пределе
+    LL = std::clamp(LL, 1, kMaxLantern);  // походы с Острогом выше предела игры строятся на пределе
     Rng rng(seed);
     std::vector<LayoutItem> layout;
     std::vector<uint8_t> occ(kGrid * kGrid, 0);  // 0 пусто, 1 здание, 2 стена

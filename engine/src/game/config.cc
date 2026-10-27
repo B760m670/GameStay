@@ -36,8 +36,8 @@ const int kLimits[kBTypes][6] = {
 std::vector<BuildingDef> makeBuildings() {
     std::vector<BuildingDef> v(kBTypes);
     auto& L = v[(int)BType::Lantern];
-    L.type = BType::Lantern; L.id = "lantern"; L.name = "Штаб"; L.size = 4; L.maxLevel = 5; L.category = Category::Core; L.costRes = Res::Ore;
-    L.desc = "Центр поселения: отсюда управляют стройкой и обороной. Уровень штаба открывает новые постройки и поднимает их предел.";
+    L.type = BType::Lantern; L.id = "lantern"; L.name = "Острог"; L.size = 4; L.maxLevel = 5; L.category = Category::Core; L.costRes = Res::Ore;
+    L.desc = "Деревянная крепость на старом каменном фундаменте — сердце поселения. Уровень острога открывает новые постройки и поднимает их предел.";
     L.cost = {300, 1200, 4000, 12000, 30000, 70000}; L.time = {30, 60, 240, 600, 1200, 2400};  // [0] — восстановление из руин
     L.hp = {1500, 2100, 2800, 3600, 4500, 5500}; L.light = {7, 8, 9, 10, 11, 12}; L.storage = {1000, 1500, 2000, 2500, 3000, 4000};
 
