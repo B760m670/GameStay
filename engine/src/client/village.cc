@@ -651,7 +651,7 @@ void App::drawWorkshop() {
 
 void App::drawTasks() {
     ui::Rect body;
-    if (!modalFrame("Задания", 800, 380, body)) return;
+    if (!modalFrame("Задания", 800, 470, body)) return;
     const auto& defs = V::taskDefs();
     // ready первыми, затем по прогрессу
     std::vector<const lf::TaskDef*> list;
@@ -906,8 +906,11 @@ void App::drawShop() {
     }
     int LL = V::lanternLevel(S);
     const float gap = 10;
-    float cw = (body.w - 4 * gap) / 5, ch = body.h - 58, cx = body.x, cy = body.y + 58;
-    for (int i = 0; i < 6; i++) {
+    int n = 0;
+    while (n < 6 && kShopTabs[shopTab][n] != lf::BType::Count) n++;
+    int cols = std::max(n, 5);  // карточки одной ширины во всех вкладках, но шесть тоже помещаются в окно
+    float cw = (body.w - (cols - 1) * gap) / cols, ch = body.h - 58, cx = body.x, cy = body.y + 58;
+    for (int i = 0; i < n; i++) {
         lf::BType type = kShopTabs[shopTab][i];
         if (type == lf::BType::Count) break;
         const auto& d = lf::B(type);
@@ -931,7 +934,7 @@ void App::drawShop() {
         ui::Rect pill{cx + 12, cy + ch - 48, cw - 24, 38};
         atlas::draw9(atlas::get(can.ok ? "ui/btn_green" : "ui/btn_dark"), pill.x, pill.y, pill.w, pill.h, 56, 18);
         costLabel(cost.first, cost.second, pill.x + pill.w / 2, pill.y + 9, 18, afford ? 0xffffffffu : kBad, 1);
-        if (!can.ok && (have >= lim || lim == 0)) ui::lockOverlay({cx, cy, cw, ch - 56}, can.reason);
+        if (!can.ok && (have >= lim || lim == 0 || V::hqRuined(S))) ui::lockOverlay({cx, cy, cw, ch - 56}, can.reason);
         if (ui::tapped(r)) {
             if (!can.ok) toast(can.reason, kBad);
             else { modal = Modal::None; startPlacing(type); }
