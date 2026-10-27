@@ -719,6 +719,18 @@ TURRETS = {"ballista": (3, crossbow_tower), "catapult": (3, cannon_battery)}
 DEFENSE = {"brazier": (2, pitch_cauldron), "prism": (2, wall_gun_tower), "trap": (1, wolf_pit)}
 
 
+# Кровля у каждой постройки своего цвета, чтобы на поляне их различали издалека (как в рисованных стратегиях)
+ROOF_DEFAULT = list(T.ROOF)
+ROOFS = {
+    "aetherWell": [(150, 140, 124), (136, 126, 112), (160, 150, 132)],   # мельница — серый выветренный тёс
+    "aetherStore": [(164, 108, 46), (150, 98, 42), (174, 116, 50)],     # амбар — золотистая дрань
+    "barracks": [(124, 50, 38), (110, 44, 34), (134, 56, 42)],           # ратная изба — тёмно-красная
+    "workshop": [(96, 84, 76), (84, 74, 68), (106, 94, 84)],             # кузница — закопчённая
+    "beacon": [(82, 124, 98), (72, 112, 88), (92, 134, 106)],            # торг — крашенная зелёным
+    "builderHut": [(150, 100, 60), (136, 90, 54), (160, 108, 66)],       # изба плотника — свежий тёс
+}
+
+
 BUILDERS = {
     "oreMine": (3, sawmill_site), "aetherWell": (3, mill), "aetherStore": (3, granary), "oreStore": (3, lumber_yard),
     "barracks": (3, barracks), "workshop": (3, workshop), "builderHut": (2, carpenter_hut), "beacon": (2, trade_post), "camp": (3, camp),
@@ -762,6 +774,7 @@ def main():
             if bid == "builderHut" and tier > 1:
                 continue
             sc = scene(opts)
+            T.ROOF[:] = ROOFS.get(bid, ROOF_DEFAULT)
             height = fn(tier)
             finish(sc)
             shot(sc, size, height, os.path.join(out_dir, f"{bid}_t{tier}.png"))
