@@ -22,5 +22,8 @@ struct Text { std::string chars; int backspaces = 0; bool enter = false; };
 Text takeText();
 // Для автотестов: подмешать событие.
 void inject(const Event& e);
+// Клавиша зажата (код SAPP_KEYCODE_*); setKey — для автотестов.
+bool key(int code);
+void setKey(int code, bool down);
 
 }  // namespace input

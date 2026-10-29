@@ -7,6 +7,7 @@ namespace {
 std::vector<Event> queue;
 bool mouseDown = false;
 Text text;
+bool keys[512];
 
 void appendUtf8(std::string& out, uint32_t cp) {
     if (cp < 0x80) out += (char)cp;
@@ -46,8 +47,15 @@ void handle(const sapp_event* e) {
             if (e->char_code >= 32 && e->char_code != 127) appendUtf8(text.chars, e->char_code);
             break;
         case SAPP_EVENTTYPE_KEY_DOWN:
+            if (e->key_code >= 0 && e->key_code < 512) keys[e->key_code] = true;
             if (e->key_code == SAPP_KEYCODE_BACKSPACE) text.backspaces++;
             else if (e->key_code == SAPP_KEYCODE_ENTER || e->key_code == SAPP_KEYCODE_KP_ENTER) text.enter = true;
+            break;
+        case SAPP_EVENTTYPE_KEY_UP:
+            if (e->key_code >= 0 && e->key_code < 512) keys[e->key_code] = false;
+            break;
+        case SAPP_EVENTTYPE_UNFOCUSED:
+            for (bool& k : keys) k = false;
             break;
         case SAPP_EVENTTYPE_MOUSE_SCROLL:
             queue.push_back({Type::Scroll, 0, e->mouse_x * k, e->mouse_y * k, e->scroll_y});
@@ -63,6 +71,9 @@ std::vector<Event> drain() {
 }
 
 void inject(const Event& e) { queue.push_back(e); }
+
+bool key(int code) { return code >= 0 && code < 512 && keys[code]; }
+void setKey(int code, bool down) { if (code >= 0 && code < 512) keys[code] = down; }
 
 Text takeText() {
     Text t = std::move(text);

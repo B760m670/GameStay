@@ -12,6 +12,7 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 #include "../platform/platform.h"
+#include "r3d.h"
 
 #if defined(SOKOL_GLCORE)
 #include <GL/gl.h>
@@ -314,6 +315,7 @@ void endFrame(uint32_t clear) {
         sg_write_buffer_transient(&wd);
     }
     sg_begin_pass(&pass);
+    r3d::flush();  // мир в 3D — под интерфейсом
     float ub[4] = {2.f / S.w, -2.f / S.h, 0, 0};
     Blend current = Blend::Alpha;
     bool first = true;
@@ -342,6 +344,7 @@ bool screenshot(const std::string& path) {
     int w = sapp_width(), h = sapp_height();
     std::vector<uint8_t> px((size_t)w * h * 4);
     glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+    for (size_t i = 3; i < px.size(); i += 4) px[i] = 255;  // кадр на экране непрозрачен
     stbi_flip_vertically_on_write(1);
     return stbi_write_png(path.c_str(), w, h, 4, px.data(), w * 4) != 0;
 #else

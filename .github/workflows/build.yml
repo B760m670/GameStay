@@ -31,8 +31,15 @@ jobs:
           mkdir -p shots save
           export LANTERNFALL_ASSETS=assets LANTERNFALL_SAVE_DIR=save
           run() { xvfb-run -a -s "-screen 0 1800x1000x24" ./build/lanternfall --size 844x390 "$@"; }
-          run --screenshot shots/village.png --frames 20
-          run --screenshot shots/shop.png --frames 10 --modal shop
+          # «Острог: 99 ночей тайги»: утро, стройка (бот), ночь у огня, Лихо из чащи, экранное управление
+          run --screenshot shots/ostrog_day.png --frames 20
+          run --screenshot shots/ostrog_build.png --frames 40 --bot --ff 140
+          run --screenshot shots/ostrog_night.png --frames 40 --bot --ff 175
+          run --screenshot shots/ostrog_likho.png --frames 30 --ff 160 --spawn likho
+          run --screenshot shots/ostrog_touch.png --frames 20 --touch --bot --ff 60 --build
+          # старая стратегия (флаг --scene)
+          run --screenshot shots/village.png --frames 20 --scene village
+          run --screenshot shots/shop.png --frames 10 --scene village --modal shop
           rm -rf save && mkdir save && run --screenshot shots/battle.png --frames 900 --scene mission --deploy
           rm -rf save && mkdir save && run --screenshot shots/night.png --frames 600 --scene night
           ls -la shots

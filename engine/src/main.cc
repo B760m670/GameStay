@@ -1,17 +1,21 @@
-// Точка входа Lanternfall (sokol_app). Флаги для автотестов (Linux):
+// Точка входа (sokol_app). По умолчанию — «Острог: 99 ночей тайги» (client/surv_game). Флаги для автотестов (Linux):
 //   --screenshot out.png --frames N   отрисовать N кадров, сохранить кадр и выйти
-//   --scene village|mission|raid|night   стартовая сцена;  --modal shop|army|map|night|codex|menu
+//   --bot                              персонажем управляет помощник;  --ff N  перемотать N секунд;  --yaw A  поворот камеры
+//   --build                            режим стройки;  --touch  экранные кнопки и джойстик
+//   --scene village|mission|raid|night   старая стратегия;  --modal shop|army|map|night|codex|menu
 //   --deploy                             высадить всю армию (бой);  --dialogue  оставить вступительный диалог
 #include <cstdlib>
 #include <cstring>
 #include <string>
 
 #include "client/app.h"
+#include "client/surv_game.h"
 #include "engine/atlas.h"
 #include "engine/audio.h"
 #include "engine/font.h"
 #include "engine/gfx.h"
 #include "engine/input.h"
+#include "engine/r3d.h"
 #include "platform/platform.h"
 #include "sokol_app.h"
 #include "sokol_log.h"
@@ -19,13 +23,17 @@
 
 namespace {
 client::App app;
+sclient::Game survival;
+bool survMode = true;
 uint64_t lastTick = 0;
 int frameNo = 0;
 struct Opts {
     const char* shot = nullptr;
     int frames = 60;
-    std::string scene = "village", modal, select;
-    bool deploy = false, keepDialogue = false;
+    std::string scene = "survival", modal, select;
+    bool deploy = false, keepDialogue = false, bot = false, build = false, touch = false;
+    float ff = 0, yaw = -100;
+    std::string spawn;
     int w = 1280, h = 720;
     float view = 0;
 } opt;
@@ -33,10 +41,26 @@ struct Opts {
 void init() {
     stm_setup();
     gfx::init();
+    r3d::init();
     std::string assets = platform::assetDir();
     atlas::load(assets + "/atlas");
     font::load(assets + "/fonts/Rubik-Bold.ttf", 56);
     if (!opt.shot) audio::init(assets + "/sfx");
+    survMode = opt.scene == "survival";
+    if (survMode) {
+        survival.init();
+#if defined(__APPLE__)
+        survival.touch = true;
+#endif
+        survival.touch |= opt.touch;
+        survival.bot = opt.bot;
+        if (opt.ff > 0) survival.fastForward(opt.ff);
+        if (opt.yaw > -99) survival.setCameraYaw(opt.yaw);
+        survival.setBuildMode(opt.build);
+        if (opt.spawn == "likho") survival.debugSpawn(surv::EnemyKind::Likho, 9.f);
+        if (opt.spawn == "wolf") survival.debugSpawn(surv::EnemyKind::Wolf, 6.f);
+        return;
+    }
     app.init();
     if (!opt.keepDialogue && opt.shot) app.skipDialogue();
     if (opt.shot && opt.scene != "title") app.title = false;
@@ -67,7 +91,8 @@ void frame() {
     if (dt > 0.1) dt = 0.1;
     static bool deployed = false;
     if (opt.deploy && !deployed && frameNo >= 2 && app.scene == client::Scene::Battle) { app.autoDeploy(); deployed = true; }
-    app.frame((float)dt, sapp_widthf() / sapp_dpi_scale(), sapp_heightf() / sapp_dpi_scale());
+    if (survMode) survival.frame((float)dt, sapp_widthf() / sapp_dpi_scale(), sapp_heightf() / sapp_dpi_scale());
+    else app.frame((float)dt, sapp_widthf() / sapp_dpi_scale(), sapp_heightf() / sapp_dpi_scale());
     frameNo++;
     if (opt.shot && frameNo >= opt.frames) {
         gfx::screenshot(opt.shot);
@@ -77,11 +102,11 @@ void frame() {
 
 void event(const sapp_event* e) {
     input::handle(e);
-    if (e->type == SAPP_EVENTTYPE_SUSPENDED || e->type == SAPP_EVENTTYPE_QUIT_REQUESTED) app.save();
+    if (!survMode && (e->type == SAPP_EVENTTYPE_SUSPENDED || e->type == SAPP_EVENTTYPE_QUIT_REQUESTED)) app.save();
 }
 
 void cleanup() {
-    app.save();
+    if (!survMode) app.save();
     audio::shutdown();
     gfx::shutdown();
 }
@@ -99,6 +124,12 @@ sapp_desc sokol_main(int argc, char* argv[]) {
         else if (a == "--select") opt.select = next();
         else if (a == "--dialogue") opt.keepDialogue = true;
         else if (a == "--view") opt.view = (float)std::atof(next());
+        else if (a == "--bot") opt.bot = true;
+        else if (a == "--spawn") opt.spawn = next();
+        else if (a == "--build") opt.build = true;
+        else if (a == "--touch") opt.touch = true;
+        else if (a == "--ff") opt.ff = (float)std::atof(next());
+        else if (a == "--yaw") opt.yaw = (float)std::atof(next());
         else if (a == "--size") { std::string s = next(); opt.w = std::atoi(s.c_str()); opt.h = std::atoi(s.substr(s.find('x') + 1).c_str()); }
     }
     sapp_desc d = {};
@@ -108,7 +139,7 @@ sapp_desc sokol_main(int argc, char* argv[]) {
     d.cleanup_cb = cleanup;
     d.width = opt.w;
     d.height = opt.h;
-    d.window_title = "Lanternfall";
+    d.window_title = "Острог: 99 ночей тайги";
     d.high_dpi = true;
     d.sample_count = 1;
     d.ios.keyboard_resizes_canvas = false;

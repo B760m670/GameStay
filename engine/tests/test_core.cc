@@ -4,9 +4,11 @@
 #include <functional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "game/core.h"
+#include "game/surv.h"
 
 using namespace lf;
 
@@ -461,4 +463,133 @@ TEST(new_game_starts_with_hq_ruins) {
     village::tick(S, 60 * 1000);
     CHECK(!village::hqRuined(S) && village::lanternLevel(S) == 1, "level=%d", S.buildings[0].level);
     CHECK(village::canBuild(S, BType::Ballista, 60 * 1000).ok, "first defence is available after restoration");
+}
+
+// ---------- «Острог: 99 ночей тайги» ----------
+namespace {
+// Повернуть игрока к ближайшему дереву и подойти вплотную.
+void walkToTree(surv::World& w, int pi, int maxTicks = 400) {
+    auto& p = w.players[pi];
+    const surv::Tree* t = nullptr;
+    float bd = 1e9f;
+    for (auto& tr : w.trees) if (tr.alive()) { float d = std::hypot(tr.x - p.x, tr.y - p.y); if (d < bd) { bd = d; t = &tr; } }
+    if (!t) return;
+    float tx = t->x, ty = t->y;
+    for (int k = 0; k < maxTicks; k++) {
+        float dx = tx - p.x, dy = ty - p.y, d = std::hypot(dx, dy);
+        if (d < 1.2f) break;
+        surv::Input in;
+        in.mx = dx / d; in.my = dy / d;
+        surv::step(w, {in});
+    }
+    p.facing = std::atan2(ty - p.y, tx - p.x);
+}
+}  // namespace
+
+TEST(surv_chop_tree_gives_wood) {
+    surv::World w;
+    surv::init(w, 7);
+    surv::addPlayer(w, "Ярослав");
+    CHECK(w.trees.size() > 150, "trees %zu", w.trees.size());
+    walkToTree(w, 0);
+    CHECK(surv::treeInReach(w, w.players[0]) != nullptr, "no tree in reach");
+    int fell = 0;
+    for (int k = 0; k < 200 && !fell; k++) {
+        surv::Input in;
+        in.act = true;
+        surv::step(w, {in});
+        for (auto& e : w.events) fell += e.type == surv::Ev::TreeFell;
+    }
+    CHECK(fell == 1 && w.players[0].wood == 3, "fell %d wood %d", fell, w.players[0].wood);
+}
+
+TEST(surv_build_palisade_and_feed_fire) {
+    surv::World w;
+    surv::init(w, 3);
+    surv::addPlayer(w, "Ярослав");
+    auto& p = w.players[0];
+    p.wood = 10;
+    int cx = (int)std::floor(p.x) + 2, cy = (int)std::floor(p.y);
+    surv::Input b;
+    b.build = true; b.piece = surv::Piece::Palisade; b.bx = cx; b.by = cy;
+    surv::step(w, {b});
+    CHECK(surv::structureAt(w, cx, cy) != nullptr && p.wood == 8, "palisade not built, wood %d", p.wood);
+    std::string why;
+    CHECK(!surv::canBuild(w, p, surv::Piece::Palisade, cx, cy, &why), "built twice");
+    // подкинуть дров
+    float fuel = w.fuel;
+    for (int k = 0; k < 30; k++) { surv::Input f; f.feed = true; surv::step(w, {f}); }
+    CHECK(w.fuel > fuel + 30 && p.wood < 8, "fuel %.1f -> %.1f, wood %d", fuel, w.fuel, p.wood);
+}
+
+TEST(surv_palisade_stops_wolves_and_gets_broken) {
+    surv::World w;
+    surv::init(w, 11);
+    surv::addPlayer(w, "Ярослав");
+    auto& p = w.players[0];
+    w.fuel = 0;  // огонь погас — волки идут прямо
+    // глухое кольцо частокола вокруг игрока
+    int px = (int)std::floor(p.x), py = (int)std::floor(p.y);
+    for (int dx = -2; dx <= 2; dx++)
+        for (int dy = -2; dy <= 2; dy++)
+            if (std::max(std::abs(dx), std::abs(dy)) == 2) {
+                surv::Structure s;
+                s.id = w.nextId++; s.kind = surv::Piece::Palisade; s.cx = px + dx; s.cy = py + dy; s.hp = s.maxHp = 10;
+                w.structures.push_back(s);
+            }
+    size_t walls = w.structures.size();
+    w.night = true;
+    surv::Enemy e;
+    e.id = w.nextId++; e.kind = surv::EnemyKind::Wolf; e.x = p.x + 8; e.y = p.y; e.hp = e.maxHp = 3;
+    w.enemies.push_back(e);
+    float hp0 = p.hp;
+    bool hitWall = false;
+    for (int k = 0; k < 20 * 20; k++) {
+        surv::step(w, {});
+        for (auto& ev : w.events) hitWall |= ev.type == surv::Ev::Hit;
+    }
+    CHECK(hitWall, "wolf never hit the palisade");
+    CHECK(p.hp == hp0 || w.structures.size() < walls, "wolf passed an intact palisade");
+}
+
+TEST(surv_night_comes_and_likho_fears_fire) {
+    surv::World w;
+    surv::init(w, 5);
+    surv::addPlayer(w, "Ярослав");
+    w.day = 3;
+    w.phaseT = surv::kDayLen - surv::kDt;
+    surv::step(w, {});
+    CHECK(w.night, "night did not begin");
+    bool likho = false;
+    for (auto& e : w.enemies) likho |= e.kind == surv::EnemyKind::Likho;
+    CHECK(likho, "no Likho on night 3");
+    // Лихо у самого огня: должно отступать и получать урон
+    for (auto& e : w.enemies) if (e.kind == surv::EnemyKind::Likho) { e.x = w.fireX + 2.5f; e.y = w.fireY; }
+    w.fuel = 200;
+    float hp0 = 0, d0 = 0;
+    for (auto& e : w.enemies) if (e.kind == surv::EnemyKind::Likho) { hp0 = e.hp; d0 = std::hypot(e.x - w.fireX, e.y - w.fireY); }
+    for (int k = 0; k < 40; k++) surv::step(w, {});
+    for (auto& e : w.enemies)
+        if (e.kind == surv::EnemyKind::Likho) {
+            CHECK(e.hp < hp0, "Likho not burned by light");
+            CHECK(std::hypot(e.x - w.fireX, e.y - w.fireY) > d0, "Likho did not retreat");
+        }
+}
+
+TEST(surv_deterministic) {
+    auto run = [] {
+        surv::World w;
+        surv::init(w, 99);
+        surv::addPlayer(w, "А");
+        surv::addPlayer(w, "Б");
+        w.phaseT = surv::kDayLen - 1;
+        for (int k = 0; k < 20 * 60; k++) {
+            surv::Input a, b;
+            a.mx = std::sin(k * 0.01f); a.my = std::cos(k * 0.013f); a.act = k % 7 == 0;
+            b.mx = -0.5f; b.act = k % 5 == 0;
+            surv::step(w, {a, b});
+        }
+        return std::make_tuple(w.players[0].x, w.players[1].y, w.enemies.size(), w.players[0].hp, w.fuel);
+    };
+    CHECK(run() == run(), "two runs differ");
 }
