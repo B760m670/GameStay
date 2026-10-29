@@ -1,0 +1,6 @@
+# Сторонние библиотеки (stb, sokol) — публичный код без секретов; эвристика «высокой энтропии»
+# срабатывает на строки вроде "FORMAT=32-bit_rle_rgbe" в парсере HDR stb_image.
+version: 2
+secret:
+  ignored_paths:
+    - "engine/third_party/**"
